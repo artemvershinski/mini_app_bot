@@ -6,17 +6,41 @@ tg.expand();
 tg.setHeaderColor('#232323');
 tg.setBackgroundColor('#232323');
 
+// Функция для подробного логирования
+function logWithDetails(level, message, data = null) {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] [${level}] ${message}`;
+    
+    if (data) {
+        console.log(logMessage, data);
+        // Пытаемся отправить логи на сервер
+        fetch('/api/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                level,
+                message,
+                data,
+                url: window.location.href,
+                userAgent: navigator.userAgent
+            })
+        }).catch(() => {}); // Игнорируем ошибки отправки логов
+    } else {
+        console.log(logMessage);
+    }
+}
+
 async function init() {
     try {
-        console.log('Initializing app...');
+        logWithDetails('INFO', 'Initializing app...');
         
         // Аутентификация
         const authResult = await authenticate();
-        console.log('Auth result:', authResult);
+        logWithDetails('INFO', 'Auth result:', authResult);
         
         if (authResult && authResult.ok) {
             userData = authResult.user;
-            console.log('User data:', userData);
+            logWithDetails('INFO', 'User data loaded:', userData);
             
             const userNameEl = document.getElementById('userName');
             if (userNameEl) {
@@ -32,6 +56,7 @@ async function init() {
             }
             
             // Загружаем сообщения
+            logWithDetails('INFO', 'Loading messages...');
             await loadInboxMessages();
             await loadSentMessages();
             
@@ -43,44 +68,164 @@ async function init() {
             document.querySelector('.tab-btn.active')?.click();
             
         } else {
-            console.error('Auth failed:', authResult);
-            showError('Ошибка авторизации');
+            logWithDetails('ERROR', 'Auth failed:', authResult);
+            showError('Ошибка авторизации: ' + (authResult?.error || 'Неизвестная ошибка'));
         }
     } catch (error) {
-        console.error('Init error:', error);
-        showError('Ошибка загрузки');
+        logWithDetails('ERROR', 'Init error:', error);
+        showError('Ошибка загрузки: ' + error.message);
     }
 }
 
 async function authenticate() {
     const initData = tg.initData;
-    console.log('Init data:', initData ? 'present' : 'missing');
+    logWithDetails('INFO', 'Init data present:', { 
+        hasInitData: !!initData,
+        length: initData?.length 
+    });
     
     if (!initData) {
+        logWithDetails('ERROR', 'No init data');
         return { ok: false, error: 'Нет данных авторизации' };
     }
     
+    // Пробуем разные методы авторизации
+    const methods = [
+        // Метод 1: GET с query параметром
+        async () => {
+            logWithDetails('INFO', 'Trying auth method 1: GET with query param');
+            const url = `/api/auth?initData=${encodeURIComponent(initData)}`;
+            logWithDetails('DEBUG', 'Request URL:', url);
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 
+                    'Accept': 'application/json'
+                }
+            });
+            
+            logWithDetails('DEBUG', 'Response status:', response.status);
+            const data = await response.json();
+            logWithDetails('DEBUG', 'Response data:', data);
+            return { response, data };
+        },
+        
+        // Метод 2: POST с JSON
+        async () => {
+            logWithDetails('INFO', 'Trying auth method 2: POST with JSON');
+            const response = await fetch('/api/auth', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ initData })
+            });
+            
+            logWithDetails('DEBUG', 'Response status:', response.status);
+            const data = await response.json();
+            logWithDetails('DEBUG', 'Response data:', data);
+            return { response, data };
+        },
+        
+        // Метод 3: POST с form data
+        async () => {
+            logWithDetails('INFO', 'Trying auth method 3: POST with form data');
+            const formData = new FormData();
+            formData.append('initData', initData);
+            
+            const response = await fetch('/api/auth', {
+                method: 'POST',
+                body: formData
+            });
+            
+            logWithDetails('DEBUG', 'Response status:', response.status);
+            const text = await response.text();
+            logWithDetails('DEBUG', 'Response text:', text);
+            try {
+                const data = JSON.parse(text);
+                return { response, data };
+            } catch {
+                return { response, data: { ok: false, error: text } };
+            }
+        }
+    ];
+    
+    // Пробуем методы по очереди
+    for (let i = 0; i < methods.length; i++) {
+        try {
+            const result = await methods[i]();
+            
+            if (result.response.ok) {
+                logWithDetails('INFO', `Auth method ${i+1} succeeded:`, result.data);
+                return result.data;
+            } else {
+                logWithDetails('WARN', `Auth method ${i+1} failed with status ${result.response.status}:`, result.data);
+            }
+        } catch (error) {
+            logWithDetails('ERROR', `Auth method ${i+1} threw error:`, error);
+        }
+    }
+    
+    logWithDetails('ERROR', 'All auth methods failed');
+    return { ok: false, error: 'Все методы авторизации не сработали' };
+}
+
+async function loadInboxMessages() {
     try {
-        // Пробуем GET запрос с query параметром
-        const response = await fetch(`/api/auth?initData=${encodeURIComponent(initData)}`, {
+        logWithDetails('INFO', 'Loading inbox messages...');
+        const initData = tg.initData;
+        
+        const response = await fetch(`/api/messages/inbox?initData=${encodeURIComponent(initData)}`, {
             method: 'GET',
             headers: { 
                 'Accept': 'application/json'
             }
         });
         
+        logWithDetails('DEBUG', 'Inbox response status:', response.status);
+        
         if (!response.ok) {
-            const text = await response.text();
-            console.error('Auth response not OK:', response.status, text);
-            return { ok: false, error: `HTTP ${response.status}` };
+            logWithDetails('ERROR', 'Inbox response not OK:', response.status);
+            displayInboxMessages([]);
+            return;
         }
         
         const data = await response.json();
-        console.log('Auth response data:', data);
-        return data;
+        logWithDetails('INFO', 'Inbox messages loaded:', { count: data.messages?.length || 0 });
+        displayInboxMessages(data.messages || []);
     } catch (error) {
-        console.error('Auth fetch error:', error);
-        return { ok: false, error: error.message };
+        logWithDetails('ERROR', 'Load inbox error:', error);
+        displayInboxMessages([]);
+    }
+}
+
+async function loadSentMessages() {
+    try {
+        logWithDetails('INFO', 'Loading sent messages...');
+        const initData = tg.initData;
+        
+        const response = await fetch(`/api/messages/sent?initData=${encodeURIComponent(initData)}`, {
+            method: 'GET',
+            headers: { 
+                'Accept': 'application/json'
+            }
+        });
+        
+        logWithDetails('DEBUG', 'Sent response status:', response.status);
+        
+        if (!response.ok) {
+            logWithDetails('ERROR', 'Sent response not OK:', response.status);
+            displaySentMessages([]);
+            return;
+        }
+        
+        const data = await response.json();
+        logWithDetails('INFO', 'Sent messages loaded:', { count: data.messages?.length || 0 });
+        displaySentMessages(data.messages || []);
+    } catch (error) {
+        logWithDetails('ERROR', 'Load sent error:', error);
+        displaySentMessages([]);
     }
 }
 
@@ -88,12 +233,12 @@ function setupTabs() {
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabs = document.querySelectorAll('.tab');
     
-    console.log('Setting up tabs:', tabButtons.length, 'buttons,', tabs.length, 'tabs');
+    logWithDetails('INFO', 'Setting up tabs:', { buttons: tabButtons.length, tabs: tabs.length });
     
     tabButtons.forEach(btn => {
         btn.addEventListener('click', function(e) {
             const tabId = this.dataset.tab;
-            console.log('Tab clicked:', tabId);
+            logWithDetails('DEBUG', 'Tab clicked:', tabId);
             
             // Убираем активный класс у всех кнопок
             tabButtons.forEach(b => b.classList.remove('active'));
@@ -106,60 +251,10 @@ function setupTabs() {
             const activeTab = document.getElementById(tabId + '-tab');
             if (activeTab) {
                 activeTab.classList.add('active');
-                console.log('Activated tab:', tabId + '-tab');
+                logWithDetails('DEBUG', 'Activated tab:', tabId + '-tab');
             }
         });
     });
-}
-
-async function loadInboxMessages() {
-    try {
-        console.log('Loading inbox messages...');
-        const response = await fetch(`/api/messages/inbox?initData=${encodeURIComponent(tg.initData)}`, {
-            method: 'GET',
-            headers: { 
-                'Accept': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            console.error('Inbox response not OK:', response.status);
-            displayInboxMessages([]);
-            return;
-        }
-        
-        const data = await response.json();
-        console.log('Inbox messages loaded:', data.messages?.length || 0);
-        displayInboxMessages(data.messages || []);
-    } catch (error) {
-        console.error('Load inbox error:', error);
-        displayInboxMessages([]);
-    }
-}
-
-async function loadSentMessages() {
-    try {
-        console.log('Loading sent messages...');
-        const response = await fetch(`/api/messages/sent?initData=${encodeURIComponent(tg.initData)}`, {
-            method: 'GET',
-            headers: { 
-                'Accept': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            console.error('Sent response not OK:', response.status);
-            displaySentMessages([]);
-            return;
-        }
-        
-        const data = await response.json();
-        console.log('Sent messages loaded:', data.messages?.length || 0);
-        displaySentMessages(data.messages || []);
-    } catch (error) {
-        console.error('Load sent error:', error);
-        displaySentMessages([]);
-    }
 }
 
 function displayInboxMessages(messages) {
@@ -316,6 +411,8 @@ async function sendMessage() {
     updateButtonState();
     
     try {
+        logWithDetails('INFO', 'Sending message...', { textLength: text.length });
+        
         const response = await fetch('/api/send', {
             method: 'POST',
             headers: { 
@@ -328,7 +425,10 @@ async function sendMessage() {
             })
         });
         
+        logWithDetails('DEBUG', 'Send response status:', response.status);
+        
         const result = await response.json();
+        logWithDetails('INFO', 'Send result:', result);
         
         if (result.ok) {
             textarea.value = '';
@@ -347,11 +447,12 @@ async function sendMessage() {
                 });
             }
         } else {
+            logWithDetails('ERROR', 'Send failed:', result);
             alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
         }
     } catch (error) {
-        console.error('Send error:', error);
-        alert('Ошибка отправки');
+        logWithDetails('ERROR', 'Send error:', error);
+        alert('Ошибка отправки: ' + error.message);
     } finally {
         isLoading = false;
         updateButtonState();
@@ -382,6 +483,8 @@ function setupEventListeners() {
 }
 
 function showError(message) {
+    logWithDetails('ERROR', 'Showing error:', message);
+    
     const container = document.getElementById('inboxMessages');
     if (container) {
         container.innerHTML = `
