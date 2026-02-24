@@ -117,10 +117,12 @@ async function loadInboxMessages() {
     try {
         console.log('Loading inbox messages...');
         const response = await fetch('/api/messages/inbox', {
+            method: 'POST', // Меняем на POST
             headers: { 
-                'X-Telegram-Init-Data': tg.initData,
+                'Content-Type': 'application/json',
                 'Accept': 'application/json'
-            }
+            },
+            body: JSON.stringify({ initData: tg.initData }) // Передаем initData в теле
         });
         
         if (!response.ok) {
@@ -142,10 +144,12 @@ async function loadSentMessages() {
     try {
         console.log('Loading sent messages...');
         const response = await fetch('/api/messages/sent', {
+            method: 'POST', // Меняем на POST
             headers: { 
-                'X-Telegram-Init-Data': tg.initData,
+                'Content-Type': 'application/json',
                 'Accept': 'application/json'
-            }
+            },
+            body: JSON.stringify({ initData: tg.initData }) // Передаем initData в теле
         });
         
         if (!response.ok) {
