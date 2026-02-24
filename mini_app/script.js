@@ -8,11 +8,11 @@ tg.setBackgroundColor('#232323');
 
 async function init() {
     try {
-        showLoading(true);
-        
+        // Аутентификация
         const authResult = await authenticate();
+        console.log('Auth result:', authResult); // Для отладки
         
-        if (authResult.ok) {
+        if (authResult && authResult.ok) {
             userData = authResult.user;
             
             document.getElementById('userName').textContent = 
@@ -24,26 +24,28 @@ async function init() {
                 badge.classList.remove('hidden');
             }
             
-            // Загружаем сообщения для обеих вкладок
+            // Загружаем сообщения
             await Promise.all([
                 loadInboxMessages(),
                 loadSentMessages()
             ]);
             
+            // Настраиваем переключение табов
+            setupTabs();
             setupEventListeners();
         } else {
-            showError('Ошибка авторизации');
+            console.error('Auth failed:', authResult);
+            showError('Ошибка авторизации: ' + (authResult?.error || 'Неизвестная ошибка'));
         }
     } catch (error) {
         console.error('Init error:', error);
         showError('Не удалось загрузить данные');
-    } finally {
-        showLoading(false);
     }
 }
 
 async function authenticate() {
     const initData = tg.initData;
+    console.log('Init data length:', initData?.length);
     
     if (!initData) {
         return { ok: false, error: 'No init data' };
@@ -52,24 +54,70 @@ async function authenticate() {
     try {
         const response = await fetch('/api/auth', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
             body: JSON.stringify({ initData })
         });
         
-        return await response.json();
+        if (!response.ok) {
+            const text = await response.text();
+            console.error('Auth response not OK:', response.status, text);
+            return { ok: false, error: `HTTP ${response.status}` };
+        }
+        
+        const data = await response.json();
+        console.log('Auth response data:', data);
+        return data;
     } catch (error) {
-        console.error('Auth error:', error);
+        console.error('Auth fetch error:', error);
         return { ok: false, error: error.message };
     }
+}
+
+function setupTabs() {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabs = document.querySelectorAll('.tab');
+    
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tabId = e.target.dataset.tab;
+            
+            // Убираем активный класс у всех кнопок
+            tabButtons.forEach(b => b.classList.remove('active'));
+            // Добавляем активный класс нажатой кнопке
+            e.target.classList.add('active');
+            
+            // Прячем все табы
+            tabs.forEach(t => t.classList.remove('active'));
+            // Показываем нужный таб
+            const activeTab = document.getElementById(`${tabId}-tab`);
+            if (activeTab) {
+                activeTab.classList.add('active');
+            }
+            
+            console.log('Switched to tab:', tabId);
+        });
+    });
 }
 
 async function loadInboxMessages() {
     try {
         const response = await fetch('/api/messages/inbox', {
-            headers: { 'X-Telegram-Init-Data': tg.initData }
+            headers: { 
+                'X-Telegram-Init-Data': tg.initData,
+                'Accept': 'application/json'
+            }
         });
         
+        if (!response.ok) {
+            console.error('Inbox response not OK:', response.status);
+            return;
+        }
+        
         const data = await response.json();
+        console.log('Inbox messages:', data);
         
         if (data.messages) {
             displayInboxMessages(data.messages);
@@ -82,10 +130,19 @@ async function loadInboxMessages() {
 async function loadSentMessages() {
     try {
         const response = await fetch('/api/messages/sent', {
-            headers: { 'X-Telegram-Init-Data': tg.initData }
+            headers: { 
+                'X-Telegram-Init-Data': tg.initData,
+                'Accept': 'application/json'
+            }
         });
         
+        if (!response.ok) {
+            console.error('Sent response not OK:', response.status);
+            return;
+        }
+        
         const data = await response.json();
+        console.log('Sent messages:', data);
         
         if (data.messages) {
             displaySentMessages(data.messages);
@@ -111,7 +168,7 @@ function displayInboxMessages(messages) {
     
     let html = '';
     messages.forEach(msg => {
-        const date = new Date(msg.answered_at || msg.forwarded_at);
+        const date = new Date(msg.answered_at || Date.now());
         const timeStr = date.toLocaleString('ru-RU', {
             hour: '2-digit',
             minute: '2-digit',
@@ -132,7 +189,7 @@ function displayInboxMessages(messages) {
                         ${escapeHtml(msg.answer_text || 'Ответ получен')}
                     </div>
                     <div class="answer-meta">
-                        ${msg.answered_by_name ? `От: ${msg.answered_by_name}` : 'Администратор'}
+                        ${msg.answered_by_name || 'Администратор'}
                     </div>
                 </div>
                 
@@ -167,7 +224,7 @@ function displaySentMessages(messages) {
     
     let html = '';
     messages.forEach(msg => {
-        const date = new Date(msg.forwarded_at);
+        const date = new Date(msg.forwarded_at || Date.now());
         const timeStr = date.toLocaleString('ru-RU', {
             hour: '2-digit',
             minute: '2-digit',
@@ -217,7 +274,10 @@ async function sendMessage(text) {
     try {
         const response = await fetch('/api/send', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
             body: JSON.stringify({
                 initData: tg.initData,
                 text: text
@@ -235,9 +295,8 @@ async function sendMessage(text) {
             
             document.getElementById('messageText').value = '';
             updateCharCounter();
-            updateButtonState();
             
-            // Обновляем обе вкладки
+            // Обновляем сообщения
             await Promise.all([
                 loadInboxMessages(),
                 loadSentMessages()
@@ -275,10 +334,6 @@ function updateButtonState() {
     }
 }
 
-function showLoading(show) {
-    // Загрузка уже отображается через спиннеры в HTML
-}
-
 function showError(message) {
     tg.showPopup({
         title: 'Ошибка',
@@ -298,43 +353,35 @@ function escapeHtml(unsafe) {
 }
 
 function setupEventListeners() {
-    // Переключение табов
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const tab = e.target.dataset.tab;
-            
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.getElementById(`${tab}-tab`).classList.add('active');
-        });
-    });
-    
     const textarea = document.getElementById('messageText');
     const sendBtn = document.getElementById('sendMessageBtn');
     
-    textarea.addEventListener('input', () => {
-        updateCharCounter();
-        updateButtonState();
-    });
+    if (textarea) {
+        textarea.addEventListener('input', () => {
+            updateCharCounter();
+            updateButtonState();
+        });
+        
+        textarea.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                const text = textarea.value.trim();
+                if (text && !isLoading) {
+                    sendMessage(text);
+                }
+            }
+        });
+    }
     
-    sendBtn.addEventListener('click', () => {
-        const text = textarea.value.trim();
-        if (text && !isLoading) {
-            sendMessage(text);
-        }
-    });
-    
-    textarea.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            e.preventDefault();
-            const text = textarea.value.trim();
+    if (sendBtn) {
+        sendBtn.addEventListener('click', () => {
+            const text = textarea?.value.trim();
             if (text && !isLoading) {
                 sendMessage(text);
             }
-        }
-    });
+        });
+    }
 }
 
+// Запускаем при загрузке
 document.addEventListener('DOMContentLoaded', init);
