@@ -42,7 +42,8 @@ async function init() {
             // Настраиваем обработчики
             setupEventListeners();
         } else {
-            showError('Ошибка авторизации');
+            console.error('Auth failed:', authResult.error);
+            showError('Ошибка авторизации: ' + (authResult.error || 'Неизвестная ошибка'));
         }
     } catch (error) {
         console.error('Init error:', error);
@@ -57,6 +58,7 @@ async function authenticate() {
     const initData = tg.initData;
     
     if (!initData) {
+        console.error('No init data from Telegram');
         return { ok: false, error: 'No init data' };
     }
     
@@ -69,7 +71,8 @@ async function authenticate() {
             body: JSON.stringify({ initData })
         });
         
-        return await response.json();
+        const data = await response.json();
+        return data;
     } catch (error) {
         console.error('Auth error:', error);
         return { ok: false, error: error.message };
@@ -97,20 +100,24 @@ function setupInterface() {
     
     if (isAdmin) {
         // Админ видит все табы
-        statsTab.classList.remove('hidden');
+        if (statsTab) statsTab.classList.remove('hidden');
         // Админ не видит поле ввода
-        inputContainer.classList.add('hidden');
+        if (inputContainer) inputContainer.classList.add('hidden');
     } else {
         // Обычный пользователь не видит статистику
-        statsTab.classList.add('hidden');
+        if (statsTab) statsTab.classList.add('hidden');
         // Пользователь видит поле ввода
-        inputContainer.classList.remove('hidden');
+        if (inputContainer) inputContainer.classList.remove('hidden');
         
         // Переключаем на вкладку отправленных
-        document.querySelector('[data-tab="sent"]').classList.add('active');
-        document.querySelector('[data-tab="inbox"]').classList.remove('active');
-        document.getElementById('sent-tab').classList.add('active');
-        document.getElementById('inbox-tab').classList.remove('active');
+        const sentTab = document.querySelector('[data-tab="sent"]');
+        const inboxTab = document.querySelector('[data-tab="inbox"]');
+        if (sentTab && inboxTab) {
+            sentTab.classList.add('active');
+            inboxTab.classList.remove('active');
+            document.getElementById('sent-tab').classList.add('active');
+            document.getElementById('inbox-tab').classList.remove('active');
+        }
     }
 }
 
@@ -511,7 +518,7 @@ function updateCharCounter() {
 
 // Показ/скрытие загрузки
 function showLoading(show) {
-    // Реализация зависит от UI
+    // Можно добавить индикатор загрузки
 }
 
 // Показ ошибки
@@ -561,59 +568,39 @@ function setupEventListeners() {
     });
     
     // Отправка сообщения
-    document.getElementById('sendMessageBtn').addEventListener('click', () => {
-        const text = document.getElementById('messageText').value.trim();
-        if (text) {
-            sendMessage(text);
-        } else {
-            tg.showPopup({
-                title: 'Ошибка',
-                message: 'Введите текст сообщения',
-                buttons: [{ type: 'ok' }]
-            });
-        }
-    });
+    const sendBtn = document.getElementById('sendMessageBtn');
+    if (sendBtn) {
+        sendBtn.addEventListener('click', () => {
+            const text = document.getElementById('messageText').value.trim();
+            if (text) {
+                sendMessage(text);
+            } else {
+                tg.showPopup({
+                    title: 'Ошибка',
+                    message: 'Введите текст сообщения',
+                    buttons: [{ type: 'ok' }]
+                });
+            }
+        });
+    }
     
     // Отправка ответа
-    document.getElementById('sendReplyBtn').addEventListener('click', () => {
-        const answer = document.getElementById('replyText').value.trim();
-        if (answer && currentMessageId) {
-            sendReply(currentMessageId, answer);
-        }
-    });
+    const sendReplyBtn = document.getElementById('sendReplyBtn');
+    if (sendReplyBtn) {
+        sendReplyBtn.addEventListener('click', () => {
+            const answer = document.getElementById('replyText').value.trim();
+            if (answer && currentMessageId) {
+                sendReply(currentMessageId, answer);
+            }
+        });
+    }
     
     // Счетчик символов
-    document.getElementById('messageText').addEventListener('input', updateCharCounter);
+    const messageText = document.getElementById('messageText');
+    if (messageText) {
+        messageText.addEventListener('input', updateCharCounter);
+    }
     
     // Enter для отправки (Cmd+Enter)
-    document.getElementById('messageText').addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            e.preventDefault();
-            document.getElementById('sendMessageBtn').click();
-        }
-    });
-    
-    document.getElementById('replyText').addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            e.preventDefault();
-            document.getElementById('sendReplyBtn').click();
-        }
-    });
-    
-    // Закрытие модалки по ESC
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeModal();
-        }
-    });
-    
-    // Закрытие модалки по клику вне
-    document.getElementById('replyModal').addEventListener('click', (e) => {
-        if (e.target === document.getElementById('replyModal')) {
-            closeModal();
-        }
-    });
-}
-
-// Запуск при загрузке
-document.addEventListener('DOMContentLoaded', init);
+    if (messageText) {
+        message
