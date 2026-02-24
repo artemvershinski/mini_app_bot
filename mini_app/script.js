@@ -6,8 +6,36 @@ tg.expand();
 tg.setHeaderColor('#232323');
 tg.setBackgroundColor('#232323');
 
+// Проверяем версию Telegram Web App
+const tgVersion = tg.version || '6.0';
+console.log('Telegram Web App version:', tgVersion);
+
+// Безопасный показ попапа
+function safeShowPopup(params) {
+    // Проверяем, поддерживается ли showPopup
+    if (tg.version && parseFloat(tg.version) >= 6.2) {
+        try {
+            tg.showPopup(params);
+        } catch (e) {
+            console.log('Popup error:', e);
+            // Fallback - alert если совсем ничего
+            if (params.message) {
+                alert(params.message);
+            }
+        }
+    } else {
+        // Для старых версий просто показываем alert
+        console.log('Popup message:', params.message);
+        if (params.message) {
+            alert(params.message);
+        }
+    }
+}
+
 async function init() {
     try {
+        console.log('Initializing app...');
+        
         // Аутентификация
         const authResult = await authenticate();
         console.log('Auth result:', authResult);
@@ -15,13 +43,17 @@ async function init() {
         if (authResult && authResult.ok) {
             userData = authResult.user;
             
-            document.getElementById('userName').textContent = 
-                userData.first_name || userData.username || 'User';
+            const userNameEl = document.getElementById('userName');
+            if (userNameEl) {
+                userNameEl.textContent = userData.first_name || userData.username || 'User';
+            }
             
             if (userData.unanswered > 0) {
                 const badge = document.getElementById('unansweredBadge');
-                badge.textContent = userData.unanswered;
-                badge.classList.remove('hidden');
+                if (badge) {
+                    badge.textContent = userData.unanswered;
+                    badge.classList.remove('hidden');
+                }
             }
             
             // Загружаем сообщения для обеих вкладок
@@ -35,11 +67,38 @@ async function init() {
             setupEventListeners();
         } else {
             console.error('Auth failed:', authResult);
-            showError('Ошибка авторизации: ' + (authResult?.error || 'Неизвестная ошибка'));
+            // Показываем ошибку но не ломаем приложение
+            const errorMsg = authResult?.error || 'Ошибка авторизации';
+            const container = document.getElementById('inboxMessages');
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">⚠️</div>
+                        <h3>Ошибка подключения</h3>
+                        <p>${errorMsg}</p>
+                        <button onclick="location.reload()" style="margin-top: 16px; padding: 12px 24px; background: var(--accent-gradient); border: none; border-radius: var(--radius-base); color: var(--text-inverse); font-weight: 600; cursor: pointer;">
+                            Обновить
+                        </button>
+                    </div>
+                `;
+            }
         }
     } catch (error) {
         console.error('Init error:', error);
-        showError('Не удалось загрузить данные');
+        // Показываем ошибку без попапа
+        const container = document.getElementById('inboxMessages');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">⚠️</div>
+                    <h3>Ошибка загрузки</h3>
+                    <p>${error.message || 'Неизвестная ошибка'}</p>
+                    <button onclick="location.reload()" style="margin-top: 16px; padding: 12px 24px; background: var(--accent-gradient); border: none; border-radius: var(--radius-base); color: var(--text-inverse); font-weight: 600; cursor: pointer;">
+                        Обновить
+                    </button>
+                </div>
+            `;
+        }
     }
 }
 
@@ -48,7 +107,7 @@ async function authenticate() {
     console.log('Init data length:', initData?.length);
     
     if (!initData) {
-        return { ok: false, error: 'No init data' };
+        return { ok: false, error: 'Нет данных авторизации' };
     }
     
     try {
@@ -301,14 +360,17 @@ async function sendMessage(text) {
         const result = await response.json();
         
         if (result.ok) {
-            tg.showPopup({
+            safeShowPopup({
                 title: 'Успешно',
                 message: `Сообщение #${result.message_id} отправлено!`,
                 buttons: [{ type: 'ok' }]
             });
             
-            document.getElementById('messageText').value = '';
-            updateCharCounter();
+            const textarea = document.getElementById('messageText');
+            if (textarea) {
+                textarea.value = '';
+                updateCharCounter();
+            }
             
             // Обновляем сообщения
             await Promise.all([
@@ -316,11 +378,19 @@ async function sendMessage(text) {
                 loadSentMessages()
             ]);
         } else {
-            showError(result.error || 'Ошибка отправки');
+            safeShowPopup({
+                title: 'Ошибка',
+                message: result.error || 'Ошибка отправки',
+                buttons: [{ type: 'cancel' }]
+            });
         }
     } catch (error) {
         console.error('Send error:', error);
-        showError('Ошибка отправки');
+        safeShowPopup({
+            title: 'Ошибка',
+            message: 'Ошибка отправки',
+            buttons: [{ type: 'cancel' }]
+        });
     } finally {
         isLoading = false;
         updateButtonState();
@@ -330,30 +400,27 @@ async function sendMessage(text) {
 function updateCharCounter() {
     const textarea = document.getElementById('messageText');
     const counter = document.getElementById('charCounter');
-    const length = textarea.value.length;
-    counter.textContent = `${length}/4096`;
+    if (textarea && counter) {
+        const length = textarea.value.length;
+        counter.textContent = `${length}/4096`;
+    }
 }
 
 function updateButtonState() {
     const textarea = document.getElementById('messageText');
     const button = document.getElementById('sendMessageBtn');
-    const hasText = textarea.value.trim().length > 0;
     
-    if (hasText && !isLoading) {
-        button.classList.add('active');
-        button.disabled = false;
-    } else {
-        button.classList.remove('active');
-        button.disabled = true;
+    if (textarea && button) {
+        const hasText = textarea.value.trim().length > 0;
+        
+        if (hasText && !isLoading) {
+            button.classList.add('active');
+            button.disabled = false;
+        } else {
+            button.classList.remove('active');
+            button.disabled = true;
+        }
     }
-}
-
-function showError(message) {
-    tg.showPopup({
-        title: 'Ошибка',
-        message: message,
-        buttons: [{ type: 'cancel' }]
-    });
 }
 
 function escapeHtml(unsafe) {
@@ -389,7 +456,8 @@ function setupEventListeners() {
     
     if (sendBtn) {
         sendBtn.addEventListener('click', () => {
-            const text = document.getElementById('messageText')?.value.trim();
+            const textarea = document.getElementById('messageText');
+            const text = textarea?.value.trim();
             if (text && !isLoading) {
                 sendMessage(text);
             }
