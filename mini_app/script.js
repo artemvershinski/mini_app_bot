@@ -54,20 +54,19 @@ async function init() {
 
 async function authenticate() {
     const initData = tg.initData;
-    console.log('Init data length:', initData?.length);
+    console.log('Init data:', initData ? 'present' : 'missing');
     
     if (!initData) {
         return { ok: false, error: 'Нет данных авторизации' };
     }
     
     try {
-        const response = await fetch('/api/auth', {
-            method: 'POST',
+        // Пробуем GET запрос с query параметром
+        const response = await fetch(`/api/auth?initData=${encodeURIComponent(initData)}`, {
+            method: 'GET',
             headers: { 
-                'Content-Type': 'application/json',
                 'Accept': 'application/json'
-            },
-            body: JSON.stringify({ initData })
+            }
         });
         
         if (!response.ok) {
@@ -116,13 +115,11 @@ function setupTabs() {
 async function loadInboxMessages() {
     try {
         console.log('Loading inbox messages...');
-        const response = await fetch('/api/messages/inbox', {
-            method: 'POST', // Меняем на POST
+        const response = await fetch(`/api/messages/inbox?initData=${encodeURIComponent(tg.initData)}`, {
+            method: 'GET',
             headers: { 
-                'Content-Type': 'application/json',
                 'Accept': 'application/json'
-            },
-            body: JSON.stringify({ initData: tg.initData }) // Передаем initData в теле
+            }
         });
         
         if (!response.ok) {
@@ -143,13 +140,11 @@ async function loadInboxMessages() {
 async function loadSentMessages() {
     try {
         console.log('Loading sent messages...');
-        const response = await fetch('/api/messages/sent', {
-            method: 'POST', // Меняем на POST
+        const response = await fetch(`/api/messages/sent?initData=${encodeURIComponent(tg.initData)}`, {
+            method: 'GET',
             headers: { 
-                'Content-Type': 'application/json',
                 'Accept': 'application/json'
-            },
-            body: JSON.stringify({ initData: tg.initData }) // Передаем initData в теле
+            }
         });
         
         if (!response.ok) {
