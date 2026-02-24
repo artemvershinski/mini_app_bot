@@ -10,7 +10,7 @@ async function init() {
     try {
         // Аутентификация
         const authResult = await authenticate();
-        console.log('Auth result:', authResult); // Для отладки
+        console.log('Auth result:', authResult);
         
         if (authResult && authResult.ok) {
             userData = authResult.user;
@@ -24,7 +24,7 @@ async function init() {
                 badge.classList.remove('hidden');
             }
             
-            // Загружаем сообщения
+            // Загружаем сообщения для обеих вкладок
             await Promise.all([
                 loadInboxMessages(),
                 loadSentMessages()
@@ -80,30 +80,35 @@ function setupTabs() {
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabs = document.querySelectorAll('.tab');
     
+    console.log('Setting up tabs:', tabButtons.length, 'buttons,', tabs.length, 'tabs');
+    
     tabButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const tabId = e.target.dataset.tab;
+        btn.addEventListener('click', function(e) {
+            const tabId = this.dataset.tab;
+            console.log('Tab clicked:', tabId);
             
             // Убираем активный класс у всех кнопок
             tabButtons.forEach(b => b.classList.remove('active'));
             // Добавляем активный класс нажатой кнопке
-            e.target.classList.add('active');
+            this.classList.add('active');
             
             // Прячем все табы
             tabs.forEach(t => t.classList.remove('active'));
             // Показываем нужный таб
-            const activeTab = document.getElementById(`${tabId}-tab`);
+            const activeTab = document.getElementById(tabId + '-tab');
             if (activeTab) {
                 activeTab.classList.add('active');
+                console.log('Activated tab:', tabId + '-tab');
+            } else {
+                console.error('Tab not found:', tabId + '-tab');
             }
-            
-            console.log('Switched to tab:', tabId);
         });
     });
 }
 
 async function loadInboxMessages() {
     try {
+        console.log('Loading inbox messages...');
         const response = await fetch('/api/messages/inbox', {
             headers: { 
                 'X-Telegram-Init-Data': tg.initData,
@@ -117,7 +122,7 @@ async function loadInboxMessages() {
         }
         
         const data = await response.json();
-        console.log('Inbox messages:', data);
+        console.log('Inbox messages loaded:', data.messages?.length || 0);
         
         if (data.messages) {
             displayInboxMessages(data.messages);
@@ -129,6 +134,7 @@ async function loadInboxMessages() {
 
 async function loadSentMessages() {
     try {
+        console.log('Loading sent messages...');
         const response = await fetch('/api/messages/sent', {
             headers: { 
                 'X-Telegram-Init-Data': tg.initData,
@@ -142,7 +148,7 @@ async function loadSentMessages() {
         }
         
         const data = await response.json();
-        console.log('Sent messages:', data);
+        console.log('Sent messages loaded:', data.messages?.length || 0);
         
         if (data.messages) {
             displaySentMessages(data.messages);
@@ -154,6 +160,10 @@ async function loadSentMessages() {
 
 function displayInboxMessages(messages) {
     const container = document.getElementById('inboxMessages');
+    if (!container) {
+        console.error('Inbox container not found');
+        return;
+    }
     
     if (!messages || messages.length === 0) {
         container.innerHTML = `
@@ -168,7 +178,7 @@ function displayInboxMessages(messages) {
     
     let html = '';
     messages.forEach(msg => {
-        const date = new Date(msg.answered_at || Date.now());
+        const date = msg.answered_at ? new Date(msg.answered_at) : new Date();
         const timeStr = date.toLocaleString('ru-RU', {
             hour: '2-digit',
             minute: '2-digit',
@@ -210,6 +220,10 @@ function displayInboxMessages(messages) {
 
 function displaySentMessages(messages) {
     const container = document.getElementById('sentMessages');
+    if (!container) {
+        console.error('Sent container not found');
+        return;
+    }
     
     if (!messages || messages.length === 0) {
         container.innerHTML = `
@@ -224,7 +238,7 @@ function displaySentMessages(messages) {
     
     let html = '';
     messages.forEach(msg => {
-        const date = new Date(msg.forwarded_at || Date.now());
+        const date = msg.forwarded_at ? new Date(msg.forwarded_at) : new Date();
         const timeStr = date.toLocaleString('ru-RU', {
             hour: '2-digit',
             minute: '2-digit',
@@ -375,7 +389,7 @@ function setupEventListeners() {
     
     if (sendBtn) {
         sendBtn.addEventListener('click', () => {
-            const text = textarea?.value.trim();
+            const text = document.getElementById('messageText')?.value.trim();
             if (text && !isLoading) {
                 sendMessage(text);
             }
