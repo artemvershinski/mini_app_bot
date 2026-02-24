@@ -6,32 +6,6 @@ tg.expand();
 tg.setHeaderColor('#232323');
 tg.setBackgroundColor('#232323');
 
-// Проверяем версию Telegram Web App
-const tgVersion = tg.version || '6.0';
-console.log('Telegram Web App version:', tgVersion);
-
-// Безопасный показ попапа
-function safeShowPopup(params) {
-    // Проверяем, поддерживается ли showPopup
-    if (tg.version && parseFloat(tg.version) >= 6.2) {
-        try {
-            tg.showPopup(params);
-        } catch (e) {
-            console.log('Popup error:', e);
-            // Fallback - alert если совсем ничего
-            if (params.message) {
-                alert(params.message);
-            }
-        }
-    } else {
-        // Для старых версий просто показываем alert
-        console.log('Popup message:', params.message);
-        if (params.message) {
-            alert(params.message);
-        }
-    }
-}
-
 async function init() {
     try {
         console.log('Initializing app...');
@@ -42,6 +16,7 @@ async function init() {
         
         if (authResult && authResult.ok) {
             userData = authResult.user;
+            console.log('User data:', userData);
             
             const userNameEl = document.getElementById('userName');
             if (userNameEl) {
@@ -56,49 +31,24 @@ async function init() {
                 }
             }
             
-            // Загружаем сообщения для обеих вкладок
-            await Promise.all([
-                loadInboxMessages(),
-                loadSentMessages()
-            ]);
+            // Загружаем сообщения
+            await loadInboxMessages();
+            await loadSentMessages();
             
-            // Настраиваем переключение табов
+            // Настраиваем интерфейс
             setupTabs();
             setupEventListeners();
+            
+            // Активируем первую вкладку
+            document.querySelector('.tab-btn.active')?.click();
+            
         } else {
             console.error('Auth failed:', authResult);
-            // Показываем ошибку но не ломаем приложение
-            const errorMsg = authResult?.error || 'Ошибка авторизации';
-            const container = document.getElementById('inboxMessages');
-            if (container) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">⚠️</div>
-                        <h3>Ошибка подключения</h3>
-                        <p>${errorMsg}</p>
-                        <button onclick="location.reload()" style="margin-top: 16px; padding: 12px 24px; background: var(--accent-gradient); border: none; border-radius: var(--radius-base); color: var(--text-inverse); font-weight: 600; cursor: pointer;">
-                            Обновить
-                        </button>
-                    </div>
-                `;
-            }
+            showError('Ошибка авторизации');
         }
     } catch (error) {
         console.error('Init error:', error);
-        // Показываем ошибку без попапа
-        const container = document.getElementById('inboxMessages');
-        if (container) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">⚠️</div>
-                    <h3>Ошибка загрузки</h3>
-                    <p>${error.message || 'Неизвестная ошибка'}</p>
-                    <button onclick="location.reload()" style="margin-top: 16px; padding: 12px 24px; background: var(--accent-gradient); border: none; border-radius: var(--radius-base); color: var(--text-inverse); font-weight: 600; cursor: pointer;">
-                        Обновить
-                    </button>
-                </div>
-            `;
-        }
+        showError('Ошибка загрузки');
     }
 }
 
@@ -158,8 +108,6 @@ function setupTabs() {
             if (activeTab) {
                 activeTab.classList.add('active');
                 console.log('Activated tab:', tabId + '-tab');
-            } else {
-                console.error('Tab not found:', tabId + '-tab');
             }
         });
     });
@@ -177,17 +125,16 @@ async function loadInboxMessages() {
         
         if (!response.ok) {
             console.error('Inbox response not OK:', response.status);
+            displayInboxMessages([]);
             return;
         }
         
         const data = await response.json();
         console.log('Inbox messages loaded:', data.messages?.length || 0);
-        
-        if (data.messages) {
-            displayInboxMessages(data.messages);
-        }
+        displayInboxMessages(data.messages || []);
     } catch (error) {
         console.error('Load inbox error:', error);
+        displayInboxMessages([]);
     }
 }
 
@@ -203,26 +150,22 @@ async function loadSentMessages() {
         
         if (!response.ok) {
             console.error('Sent response not OK:', response.status);
+            displaySentMessages([]);
             return;
         }
         
         const data = await response.json();
         console.log('Sent messages loaded:', data.messages?.length || 0);
-        
-        if (data.messages) {
-            displaySentMessages(data.messages);
-        }
+        displaySentMessages(data.messages || []);
     } catch (error) {
         console.error('Load sent error:', error);
+        displaySentMessages([]);
     }
 }
 
 function displayInboxMessages(messages) {
     const container = document.getElementById('inboxMessages');
-    if (!container) {
-        console.error('Inbox container not found');
-        return;
-    }
+    if (!container) return;
     
     if (!messages || messages.length === 0) {
         container.innerHTML = `
@@ -279,10 +222,7 @@ function displayInboxMessages(messages) {
 
 function displaySentMessages(messages) {
     const container = document.getElementById('sentMessages');
-    if (!container) {
-        console.error('Sent container not found');
-        return;
-    }
+    if (!container) return;
     
     if (!messages || messages.length === 0) {
         container.innerHTML = `
@@ -338,65 +278,6 @@ function displaySentMessages(messages) {
     container.innerHTML = html;
 }
 
-async function sendMessage(text) {
-    if (isLoading) return;
-    
-    isLoading = true;
-    updateButtonState();
-    
-    try {
-        const response = await fetch('/api/send', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                initData: tg.initData,
-                text: text
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.ok) {
-            safeShowPopup({
-                title: 'Успешно',
-                message: `Сообщение #${result.message_id} отправлено!`,
-                buttons: [{ type: 'ok' }]
-            });
-            
-            const textarea = document.getElementById('messageText');
-            if (textarea) {
-                textarea.value = '';
-                updateCharCounter();
-            }
-            
-            // Обновляем сообщения
-            await Promise.all([
-                loadInboxMessages(),
-                loadSentMessages()
-            ]);
-        } else {
-            safeShowPopup({
-                title: 'Ошибка',
-                message: result.error || 'Ошибка отправки',
-                buttons: [{ type: 'cancel' }]
-            });
-        }
-    } catch (error) {
-        console.error('Send error:', error);
-        safeShowPopup({
-            title: 'Ошибка',
-            message: 'Ошибка отправки',
-            buttons: [{ type: 'cancel' }]
-        });
-    } finally {
-        isLoading = false;
-        updateButtonState();
-    }
-}
-
 function updateCharCounter() {
     const textarea = document.getElementById('messageText');
     const counter = document.getElementById('charCounter');
@@ -423,14 +304,59 @@ function updateButtonState() {
     }
 }
 
-function escapeHtml(unsafe) {
-    if (!unsafe) return '';
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+async function sendMessage() {
+    if (isLoading) return;
+    
+    const textarea = document.getElementById('messageText');
+    if (!textarea) return;
+    
+    const text = textarea.value.trim();
+    if (!text) return;
+    
+    isLoading = true;
+    updateButtonState();
+    
+    try {
+        const response = await fetch('/api/send', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                initData: tg.initData,
+                text: text
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.ok) {
+            textarea.value = '';
+            updateCharCounter();
+            updateButtonState();
+            
+            // Обновляем сообщения
+            await loadSentMessages();
+            
+            // Показываем успех
+            if (tg.showPopup) {
+                tg.showPopup({
+                    title: 'Успешно',
+                    message: `Сообщение #${result.message_id} отправлено!`,
+                    buttons: [{ type: 'ok' }]
+                });
+            }
+        } else {
+            alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        console.error('Send error:', error);
+        alert('Ошибка отправки');
+    } finally {
+        isLoading = false;
+        updateButtonState();
+    }
 }
 
 function setupEventListeners() {
@@ -446,23 +372,40 @@ function setupEventListeners() {
         textarea.addEventListener('keydown', (e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault();
-                const text = textarea.value.trim();
-                if (text && !isLoading) {
-                    sendMessage(text);
-                }
+                sendMessage();
             }
         });
     }
     
     if (sendBtn) {
-        sendBtn.addEventListener('click', () => {
-            const textarea = document.getElementById('messageText');
-            const text = textarea?.value.trim();
-            if (text && !isLoading) {
-                sendMessage(text);
-            }
-        });
+        sendBtn.addEventListener('click', sendMessage);
     }
+}
+
+function showError(message) {
+    const container = document.getElementById('inboxMessages');
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">⚠️</div>
+                <h3>Ошибка</h3>
+                <p>${message}</p>
+                <button onclick="location.reload()" style="margin-top: 16px; padding: 12px 24px; background: var(--accent-gradient); border: none; border-radius: var(--radius-base); color: var(--text-inverse); font-weight: 600; cursor: pointer;">
+                    Обновить
+                </button>
+            </div>
+        `;
+    }
+}
+
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 // Запускаем при загрузке
