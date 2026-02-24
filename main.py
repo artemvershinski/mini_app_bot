@@ -7,8 +7,6 @@ from aiogram.filters import CommandStart, Command
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
-from keep_alive import create_keep_alive_server
-from aiohttp import web
 import re
 import json
 
@@ -18,7 +16,7 @@ RATE_LIMIT_MINUTES = 10
 MAX_BAN_HOURS = 720
 KEEP_ALIVE_PORT = int(os.getenv("PORT", 8080))
 DATABASE_URL = os.getenv("DATABASE_URL")
-APP_URL = os.getenv("APP_URL", "https://message-forwarding-bot.onrender.com")
+APP_URL = os.getenv("APP_URL", "https://mini-app-bot-lzya.onrender.com")  # Твой новый URL
 MESSAGE_ID_START = 100569
 
 logging.basicConfig(
@@ -184,9 +182,12 @@ class Database:
         """Получение сообщений пользователя"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
-                SELECT * FROM messages 
-                WHERE user_id = $1 
-                ORDER BY forwarded_at DESC 
+                SELECT m.*, 
+                       CASE WHEN m.is_answered THEN a.first_name ELSE NULL END as answered_by_name
+                FROM messages m
+                LEFT JOIN users a ON m.answered_by = a.user_id
+                WHERE m.user_id = $1
+                ORDER BY m.forwarded_at DESC
                 LIMIT $2
             ''', user_id, limit)
             return [dict(row) for row in rows]
@@ -938,15 +939,6 @@ class MessageForwardingBot:
         except Exception as e:
             logger.error(f"Ошибка ответа: {e}")
     
-    async def start_keep_alive_server(self):
-        """Запуск keep-alive сервера"""
-        app = create_keep_alive_server(KEEP_ALIVE_PORT)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        await web.TCPSite(runner, '0.0.0.0', KEEP_ALIVE_PORT).start()
-        logger.info(f"✅ Keep-alive сервер на порту {KEEP_ALIVE_PORT}")
-        return runner
-    
     async def shutdown(self, sig=None):
         """Грациозное завершение работы"""
         logger.info(f"Сигнал {sig}, завершение...")
@@ -957,14 +949,12 @@ class MessageForwardingBot:
     
     async def run(self):
         """Запуск бота"""
-        runner = None
         try:
             if sys.platform != 'win32':
                 loop = asyncio.get_running_loop()
                 for sig in [signal.SIGTERM, signal.SIGINT]:
                     loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(self.shutdown(s)))
             
-            runner = await self.start_keep_alive_server()
             await self.bot.delete_webhook(drop_pending_updates=True)
             
             logger.info("🤖 Бот запущен")
@@ -981,8 +971,6 @@ class MessageForwardingBot:
         finally:
             await self.bot.session.close()
             await self.db.close()
-            if runner:
-                await runner.cleanup()
 
 def main():
     """Точка входа"""
