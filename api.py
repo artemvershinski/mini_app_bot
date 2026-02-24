@@ -21,9 +21,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 OWNER_ID = 989062605
 
+# CORS для Telegram Mini App
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # В продакшене можно заменить на конкретные домены
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -171,6 +173,7 @@ async def shutdown():
 def validate_telegram_data(init_data: str) -> Optional[Dict]:
     """Проверка подписи от Telegram"""
     try:
+        # Парсим данные из строки
         data = {}
         for item in init_data.split('&'):
             if '=' in item:
@@ -178,10 +181,17 @@ def validate_telegram_data(init_data: str) -> Optional[Dict]:
                 data[key] = value
         
         hash_check = data.pop('hash', '')
+        
+        # Создаем строку для проверки
         data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted(data.items()))
+        
+        # Создаем секретный ключ из токена бота
         secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
+        
+        # Вычисляем HMAC
         h = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256)
         
+        # Сравниваем с полученным hash
         if h.hexdigest() == hash_check:
             return data
         return None
@@ -196,15 +206,22 @@ async def auth(request: Request):
         body = await request.json()
         init_data = body.get('initData')
         
+        logger.info(f"Auth request received")
+        
         if not init_data:
+            logger.error("No init data provided")
             return JSONResponse({"error": "No init data"}, status_code=400)
         
         user_data = validate_telegram_data(init_data)
         if not user_data:
+            logger.error("Invalid signature")
             return JSONResponse({"error": "Invalid signature"}, status_code=403)
         
+        # Парсим данные пользователя
         user = json.loads(user_data.get('user', '{}'))
         user_id = int(user.get('id'))
+        
+        logger.info(f"User authenticated: {user_id}")
         
         # Получаем информацию о пользователе из БД
         db_user = await db.get_user(user_id)
@@ -231,10 +248,12 @@ async def get_messages(request: Request):
     """Получение сообщений пользователя"""
     init_data = request.headers.get('X-Telegram-Init-Data')
     if not init_data:
+        logger.error("No init data in headers")
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     
     user_data = validate_telegram_data(init_data)
     if not user_data:
+        logger.error("Invalid signature in messages request")
         return JSONResponse({"error": "Invalid signature"}, status_code=403)
     
     user = json.loads(user_data.get('user', '{}'))
@@ -267,6 +286,7 @@ async def send_message(request: Request):
         
         user_data = validate_telegram_data(init_data)
         if not user_data:
+            logger.error("Invalid signature in send request")
             return JSONResponse({"error": "Invalid signature"}, status_code=403)
         
         user = json.loads(user_data.get('user', '{}'))
