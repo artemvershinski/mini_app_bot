@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import hmac
 import hashlib
 import json
@@ -10,6 +10,7 @@ import asyncpg
 from typing import Optional, Dict, List
 from datetime import datetime
 import logging
+from urllib.parse import parse_qs
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,9 +31,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключаем статические файлы
-app.mount("/", StaticFiles(directory="mini_app", html=True), name="static")
-
 class Database:
     def __init__(self, dsn: str):
         self.dsn = dsn
@@ -41,74 +39,64 @@ class Database:
     async def connect(self):
         self.pool = await asyncpg.create_pool(self.dsn)
         logger.info("✅ API подключен к БД")
+        await self.init_db()
+    
+    async def init_db(self):
+        """Инициализация таблиц"""
+        async with self.pool.acquire() as conn:
+            # Таблица сообщений (упрощенная)
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS messages (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    message_text TEXT NOT NULL,
+                    answer_text TEXT,
+                    is_answered BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    answered_at TIMESTAMP
+                )
+            ''')
+            
+            # Создаем индексы для быстрого поиска
+            await conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)
+            ''')
+            
+            logger.info("✅ Таблицы созданы/проверены")
     
     async def close(self):
         if self.pool:
             await self.pool.close()
     
-    async def get_user(self, user_id: int) -> Optional[Dict]:
+    async def save_message(self, user_id: int, text: str) -> int:
+        """Сохранение сообщения"""
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow('SELECT * FROM users WHERE user_id = $1', user_id)
-            return dict(row) if row else None
+            result = await conn.fetchrow('''
+                INSERT INTO messages (user_id, message_text)
+                VALUES ($1, $2)
+                RETURNING id
+            ''', user_id, text)
+            return result['id']
+    
+    async def get_user_messages(self, user_id: int) -> List[Dict]:
+        """Получение всех сообщений пользователя"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT id, message_text, answer_text, is_answered, 
+                       created_at, answered_at
+                FROM messages 
+                WHERE user_id = $1
+                ORDER BY created_at DESC
+            ''', user_id)
+            return [dict(row) for row in rows]
     
     async def get_unanswered_count(self, user_id: int) -> int:
+        """Количество неотвеченных сообщений"""
         async with self.pool.acquire() as conn:
             return await conn.fetchval('''
                 SELECT COUNT(*) FROM messages 
                 WHERE user_id = $1 AND is_answered = FALSE
             ''', user_id)
-    
-    async def save_message(self, user_id: int, text: str) -> int:
-        async with self.pool.acquire() as conn:
-            result = await conn.fetchrow('''
-                UPDATE message_counter SET last_message_id = last_message_id + 1 WHERE id = 1 RETURNING last_message_id
-            ''')
-            message_id = result['last_message_id']
-            
-            await conn.execute('''
-                INSERT INTO messages (message_id, user_id, content_type, text)
-                VALUES ($1, $2, 'text', $3)
-            ''', message_id, user_id, text)
-            
-            return message_id
-    
-    async def get_user_inbox(self, user_id: int) -> List[Dict]:
-        """Получение входящих (ответы админов)"""
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch('''
-                SELECT m.message_id, m.answered_at, m.answered_by, m.answer_text,
-                       a.first_name as answered_by_name,
-                       orig.text as original_text
-                FROM messages m
-                JOIN messages orig ON m.message_id = orig.message_id
-                LEFT JOIN users a ON m.answered_by = a.user_id
-                WHERE m.user_id = $1 AND m.is_answered = TRUE
-                ORDER BY m.answered_at DESC
-            ''', user_id)
-            return [dict(row) for row in rows]
-    
-    async def get_user_sent(self, user_id: int) -> List[Dict]:
-        """Получение отправленных сообщений"""
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch('''
-                SELECT m.*, 
-                       a.first_name as answered_by_name
-                FROM messages m
-                LEFT JOIN users a ON m.answered_by = a.user_id
-                WHERE m.user_id = $1
-                ORDER BY m.forwarded_at DESC
-            ''', user_id)
-            return [dict(row) for row in rows]
-    
-    async def is_admin(self, user_id: int) -> bool:
-        if user_id == OWNER_ID:
-            return True
-        async with self.pool.acquire() as conn:
-            exists = await conn.fetchval(
-                'SELECT EXISTS(SELECT 1 FROM admins WHERE user_id = $1 AND is_active = TRUE)',
-                user_id
-            )
-            return exists
 
 db = Database(DATABASE_URL)
 
@@ -123,15 +111,19 @@ async def shutdown():
 def validate_telegram_data(init_data: str) -> Optional[Dict]:
     """Проверка подписи от Telegram"""
     try:
-        data = {}
-        for item in init_data.split('&'):
-            if '=' in item:
-                key, value = item.split('=', 1)
-                data[key] = value
+        # Парсим initData
+        parsed_data = parse_qs(init_data)
+        data = {k: v[0] for k, v in parsed_data.items()}
         
         hash_check = data.pop('hash', '')
+        
+        # Сортируем и создаем строку для проверки
         data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted(data.items()))
+        
+        # Создаем секретный ключ из токена бота
         secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
+        
+        # Вычисляем HMAC
         h = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256)
         
         if h.hexdigest() == hash_check:
@@ -141,86 +133,130 @@ def validate_telegram_data(init_data: str) -> Optional[Dict]:
         logger.error(f"Validation error: {e}")
         return None
 
-@app.post("/api/auth")
-async def auth(request: Request):
-    """Аутентификация"""
+def get_user_from_init_data(init_data: str) -> Optional[Dict]:
+    """Извлечение пользователя из initData"""
     try:
-        body = await request.json()
-        init_data = body.get('initData')
+        parsed_data = parse_qs(init_data)
+        user_str = parsed_data.get('user', ['{}'])[0]
+        user = json.loads(user_str)
+        return user
+    except Exception as e:
+        logger.error(f"Error parsing user: {e}")
+        return None
+
+@app.get("/api/auth")
+async def auth_get(request: Request):
+    """Аутентификация через GET параметры"""
+    try:
+        init_data = request.query_params.get('initData')
+        logger.info(f"Auth GET request, initData present: {bool(init_data)}")
         
         if not init_data:
-            return JSONResponse({"error": "No init data"}, status_code=400)
+            return JSONResponse({"ok": False, "error": "No init data"}, status_code=400)
         
-        user_data = validate_telegram_data(init_data)
-        if not user_data:
-            return JSONResponse({"error": "Invalid signature"}, status_code=403)
+        # Проверяем подпись
+        valid_data = validate_telegram_data(init_data)
+        if not valid_data:
+            return JSONResponse({"ok": False, "error": "Invalid signature"}, status_code=403)
         
-        user = json.loads(user_data.get('user', '{}'))
+        # Получаем пользователя
+        user = get_user_from_init_data(init_data)
+        if not user:
+            return JSONResponse({"ok": False, "error": "No user data"}, status_code=400)
+        
         user_id = int(user.get('id'))
         
-        db_user = await db.get_user(user_id)
-        is_admin = await db.is_admin(user_id)
-        unanswered = await db.get_unanswered_count(user_id) if not is_admin else 0
+        # Получаем данные пользователя
+        unanswered = await db.get_unanswered_count(user_id)
         
         return {
             "ok": True,
             "user": {
                 "id": user_id,
-                "is_admin": is_admin,
-                "first_name": user.get('first_name'),
-                "username": user.get('username'),
+                "first_name": user.get('first_name', ''),
+                "username": user.get('username', ''),
                 "unanswered": unanswered
             }
         }
     except Exception as e:
         logger.error(f"Auth error: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+@app.post("/api/auth")
+async def auth_post(request: Request):
+    """Аутентификация через POST JSON"""
+    try:
+        body = await request.json()
+        init_data = body.get('initData')
+        logger.info(f"Auth POST request, initData present: {bool(init_data)}")
+        
+        if not init_data:
+            return JSONResponse({"ok": False, "error": "No init data"}, status_code=400)
+        
+        # Проверяем подпись
+        valid_data = validate_telegram_data(init_data)
+        if not valid_data:
+            return JSONResponse({"ok": False, "error": "Invalid signature"}, status_code=403)
+        
+        # Получаем пользователя
+        user = get_user_from_init_data(init_data)
+        if not user:
+            return JSONResponse({"ok": False, "error": "No user data"}, status_code=400)
+        
+        user_id = int(user.get('id'))
+        
+        # Получаем данные пользователя
+        unanswered = await db.get_unanswered_count(user_id)
+        
+        return {
+            "ok": True,
+            "user": {
+                "id": user_id,
+                "first_name": user.get('first_name', ''),
+                "username": user.get('username', ''),
+                "unanswered": unanswered
+            }
+        }
+    except Exception as e:
+        logger.error(f"Auth error: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+@app.get("/api/messages")
+async def get_messages(request: Request):
+    """Получение всех сообщений пользователя"""
+    try:
+        init_data = request.query_params.get('initData')
+        logger.info(f"Get messages request, initData present: {bool(init_data)}")
+        
+        if not init_data:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+        # Проверяем подпись
+        valid_data = validate_telegram_data(init_data)
+        if not valid_data:
+            return JSONResponse({"error": "Invalid signature"}, status_code=403)
+        
+        # Получаем пользователя
+        user = get_user_from_init_data(init_data)
+        if not user:
+            return JSONResponse({"error": "No user data"}, status_code=400)
+        
+        user_id = int(user.get('id'))
+        
+        # Получаем сообщения
+        messages = await db.get_user_messages(user_id)
+        
+        # Форматируем даты
+        for msg in messages:
+            if msg.get('created_at'):
+                msg['created_at'] = msg['created_at'].isoformat()
+            if msg.get('answered_at'):
+                msg['answered_at'] = msg['answered_at'].isoformat()
+        
+        return {"messages": messages}
+    except Exception as e:
+        logger.error(f"Get messages error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.get("/api/messages/inbox")
-async def get_inbox(request: Request):
-    """Входящие сообщения"""
-    init_data = request.headers.get('X-Telegram-Init-Data')
-    if not init_data:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    user_data = validate_telegram_data(init_data)
-    if not user_data:
-        return JSONResponse({"error": "Invalid signature"}, status_code=403)
-    
-    user = json.loads(user_data.get('user', '{}'))
-    user_id = int(user.get('id'))
-    
-    messages = await db.get_user_inbox(user_id)
-    
-    for msg in messages:
-        if msg.get('answered_at'):
-            msg['answered_at'] = msg['answered_at'].isoformat()
-    
-    return {"messages": messages}
-
-@app.get("/api/messages/sent")
-async def get_sent(request: Request):
-    """Отправленные сообщения"""
-    init_data = request.headers.get('X-Telegram-Init-Data')
-    if not init_data:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    
-    user_data = validate_telegram_data(init_data)
-    if not user_data:
-        return JSONResponse({"error": "Invalid signature"}, status_code=403)
-    
-    user = json.loads(user_data.get('user', '{}'))
-    user_id = int(user.get('id'))
-    
-    messages = await db.get_user_sent(user_id)
-    
-    for msg in messages:
-        if msg.get('forwarded_at'):
-            msg['forwarded_at'] = msg['forwarded_at'].isoformat()
-        if msg.get('answered_at'):
-            msg['answered_at'] = msg['answered_at'].isoformat()
-    
-    return {"messages": messages}
 
 @app.post("/api/send")
 async def send_message(request: Request):
@@ -230,32 +266,42 @@ async def send_message(request: Request):
         init_data = body.get('initData')
         text = body.get('text', '').strip()
         
+        logger.info(f"Send message request, text length: {len(text)}")
+        
         if not text:
-            return JSONResponse({"error": "Empty message"}, status_code=400)
+            return JSONResponse({"ok": False, "error": "Empty message"}, status_code=400)
         
         if len(text) > 4096:
-            return JSONResponse({"error": "Message too long"}, status_code=400)
+            return JSONResponse({"ok": False, "error": "Message too long"}, status_code=400)
         
-        user_data = validate_telegram_data(init_data)
-        if not user_data:
-            return JSONResponse({"error": "Invalid signature"}, status_code=403)
+        if not init_data:
+            return JSONResponse({"ok": False, "error": "No init data"}, status_code=400)
         
-        user = json.loads(user_data.get('user', '{}'))
+        # Проверяем подпись
+        valid_data = validate_telegram_data(init_data)
+        if not valid_data:
+            return JSONResponse({"ok": False, "error": "Invalid signature"}, status_code=403)
+        
+        # Получаем пользователя
+        user = get_user_from_init_data(init_data)
+        if not user:
+            return JSONResponse({"ok": False, "error": "No user data"}, status_code=400)
+        
         user_id = int(user.get('id'))
-        
-        # Проверяем бан
-        db_user = await db.get_user(user_id)
-        if db_user and db_user.get('is_banned'):
-            ban_until = db_user.get('ban_until')
-            if ban_until and datetime.now() > ban_until.replace(tzinfo=None):
-                await db.unban_user(user_id)
-            else:
-                return JSONResponse({"error": "User is banned"}, status_code=403)
         
         # Сохраняем сообщение
         message_id = await db.save_message(user_id, text)
+        logger.info(f"Message saved with ID: {message_id}")
         
         return {"ok": True, "message_id": message_id}
     except Exception as e:
         logger.error(f"Send error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+# Для отдачи index.html
+@app.get("/")
+async def get_index():
+    return FileResponse("mini_app/index.html")
+
+# Подключаем статические файлы (CSS, JS)
+app.mount("/", StaticFiles(directory="mini_app", html=True), name="static")
