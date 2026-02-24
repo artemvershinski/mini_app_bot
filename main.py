@@ -14,9 +14,8 @@ import json
 OWNER_ID = 989062605
 RATE_LIMIT_MINUTES = 10
 MAX_BAN_HOURS = 720
-KEEP_ALIVE_PORT = int(os.getenv("PORT", 8080))
 DATABASE_URL = os.getenv("DATABASE_URL")
-APP_URL = os.getenv("APP_URL", "https://mini-app-bot-lzya.onrender.com")  # Твой новый URL
+APP_URL = os.getenv("APP_URL", "https://mini-app-bot-lzya.onrender.com")
 MESSAGE_ID_START = 100569
 
 logging.basicConfig(
@@ -38,7 +37,7 @@ class Database:
         logger.info("✅ Подключение к PostgreSQL установлено")
     
     async def init_db(self):
-        """Инициализация таблиц с проверкой существующих колонок"""
+        """Инициализация таблиц"""
         async with self.pool.acquire() as conn:
             # Таблица пользователей
             await conn.execute('''
@@ -70,6 +69,7 @@ class Database:
                     is_answered BOOLEAN DEFAULT FALSE,
                     answered_by BIGINT,
                     answered_at TIMESTAMP,
+                    answer_text TEXT,
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             ''')
@@ -85,7 +85,7 @@ class Database:
                 )
             ''')
             
-            # Таблица статистики
+            # Таблица статистики (только для админов)
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS stats (
                     id SERIAL PRIMARY KEY,
@@ -94,16 +94,10 @@ class Database:
                     failed_forwards INTEGER DEFAULT 0,
                     bans_issued INTEGER DEFAULT 0,
                     rate_limit_blocks INTEGER DEFAULT 0,
+                    answers_sent INTEGER DEFAULT 0,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # Добавляем колонку answers_sent если её нет
-            try:
-                await conn.execute('SELECT answers_sent FROM stats LIMIT 1')
-            except asyncpg.UndefinedColumnError:
-                logger.info("Добавляем колонку answers_sent в таблицу stats")
-                await conn.execute('ALTER TABLE stats ADD COLUMN answers_sent INTEGER DEFAULT 0')
             
             # Таблица для хранения последнего ID сообщения
             await conn.execute('''
@@ -169,27 +163,44 @@ class Database:
             row = await conn.fetchrow('SELECT * FROM messages WHERE message_id = $1', message_id)
             return dict(row) if row else None
     
-    async def mark_message_answered(self, message_id: int, answered_by: int):
+    async def mark_message_answered(self, message_id: int, answered_by: int, answer_text: str):
         """Отметить сообщение как отвеченное"""
         async with self.pool.acquire() as conn:
             await conn.execute('''
                 UPDATE messages 
-                SET is_answered = TRUE, answered_by = $2, answered_at = CURRENT_TIMESTAMP
+                SET is_answered = TRUE, 
+                    answered_by = $2, 
+                    answered_at = CURRENT_TIMESTAMP,
+                    answer_text = $3
                 WHERE message_id = $1
-            ''', message_id, answered_by)
+            ''', message_id, answered_by, answer_text)
     
-    async def get_user_messages(self, user_id: int, limit: int = 50) -> List[Dict]:
-        """Получение сообщений пользователя"""
+    async def get_user_messages(self, user_id: int) -> List[Dict]:
+        """Получение всех сообщений пользователя"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT m.*, 
-                       CASE WHEN m.is_answered THEN a.first_name ELSE NULL END as answered_by_name
+                       a.first_name as answered_by_name
                 FROM messages m
                 LEFT JOIN users a ON m.answered_by = a.user_id
                 WHERE m.user_id = $1
                 ORDER BY m.forwarded_at DESC
-                LIMIT $2
-            ''', user_id, limit)
+            ''', user_id)
+            return [dict(row) for row in rows]
+    
+    async def get_user_inbox(self, user_id: int) -> List[Dict]:
+        """Получение входящих сообщений (ответы админов)"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT m.message_id, m.answered_at, m.answered_by, m.answer_text,
+                       a.first_name as answered_by_name,
+                       orig.text as original_text
+                FROM messages m
+                JOIN messages orig ON m.message_id = orig.message_id
+                LEFT JOIN users a ON m.answered_by = a.user_id
+                WHERE m.user_id = $1 AND m.is_answered = TRUE
+                ORDER BY m.answered_at DESC
+            ''', user_id)
             return [dict(row) for row in rows]
     
     async def get_user(self, user_id: int) -> Optional[Dict]:
@@ -315,18 +326,10 @@ class Database:
     async def update_stats(self, **kwargs):
         """Обновление глобальной статистики"""
         async with self.pool.acquire() as conn:
-            # Проверяем какие колонки существуют
-            columns = await conn.fetchrow('SELECT * FROM stats WHERE id = 1')
-            existing_columns = columns.keys() if columns else []
-            
-            # Фильтруем только существующие колонки
-            valid_kwargs = {k: v for k, v in kwargs.items() if k in existing_columns}
-            
-            if valid_kwargs:
-                set_clause = ', '.join([f"{k} = {k} + ${i+1}" for i, k in enumerate(valid_kwargs.keys())])
-                set_clause += ", updated_at = CURRENT_TIMESTAMP"
-                query = f'UPDATE stats SET {set_clause} WHERE id = 1'
-                await conn.execute(query, *valid_kwargs.values())
+            set_clause = ', '.join([f"{k} = {k} + ${i+1}" for i, k in enumerate(kwargs.keys())])
+            set_clause += ", updated_at = CURRENT_TIMESTAMP"
+            query = f'UPDATE stats SET {set_clause} WHERE id = 1'
+            await conn.execute(query, *kwargs.values())
     
     async def get_stats(self) -> Dict:
         """Получение глобальной статистики"""
@@ -356,27 +359,6 @@ class Database:
                 'total': total,
                 'banned': banned,
                 'active_today': active_today
-            }
-    
-    async def get_most_active_user(self) -> Optional[Dict]:
-        """Получение самого активного пользователя"""
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow('''
-                SELECT * FROM users 
-                WHERE messages_sent > 0 
-                ORDER BY messages_sent DESC 
-                LIMIT 1
-            ''')
-            return dict(row) if row else None
-    
-    async def get_messages_stats(self) -> Dict:
-        """Получение статистики по сообщениям"""
-        async with self.pool.acquire() as conn:
-            total = await conn.fetchval('SELECT COUNT(*) FROM messages')
-            answered = await conn.fetchval('SELECT COUNT(*) FROM messages WHERE is_answered = TRUE')
-            return {
-                'total': total,
-                'answered': answered
             }
     
     async def close(self):
@@ -426,23 +408,40 @@ class MessageForwardingBot:
             last_name=user.last_name
         )
     
-    async def send_reply_notification(self, user_id: int, message_id: int, answer_text: str, admin_name: str):
-        """Отправка уведомления пользователю о ответе"""
-        try:
-            await self.bot.send_message(
-                user_id,
-                f"🔔 <b>Вам поступил ответ на сообщение #{message_id}</b>\n\n"
-                f"{answer_text}\n\n"
-                f"<i>Ответил: {admin_name}</i>"
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
-            return False
+    async def check_ban_status(self, user_id: int) -> tuple[bool, str]:
+        """Проверка статуса блокировки"""
+        user_data = await self.db.get_user(user_id)
+        if not user_data or not user_data.get('is_banned'):
+            return False, ""
+        
+        ban_until = user_data.get('ban_until')
+        if ban_until:
+            if hasattr(ban_until, 'tzinfo') and ban_until.tzinfo:
+                ban_until = ban_until.replace(tzinfo=None)
+            if datetime.now() > ban_until:
+                await self.db.unban_user(user_id)
+                return False, ""
+            return True, f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
+        return True, "навсегда"
+    
+    async def check_rate_limit(self, user_id: int) -> tuple[bool, int]:
+        """Проверка лимита сообщений"""
+        user_data = await self.db.get_user(user_id)
+        if not user_data or not user_data.get('last_message_time'):
+            return True, 0
+        
+        last_time = user_data['last_message_time']
+        if hasattr(last_time, 'tzinfo') and last_time.tzinfo:
+            last_time = last_time.replace(tzinfo=None)
+        
+        time_diff = (datetime.now() - last_time).total_seconds() / 60
+        if time_diff < RATE_LIMIT_MINUTES:
+            return False, RATE_LIMIT_MINUTES - int(time_diff)
+        return True, 0
     
     async def forward_message_to_admins(self, message: Message, user_data: Dict, message_id: int):
-        """Пересылка сообщения админам с ID"""
-        # Определяем тип контента и готовим сообщение
+        """Пересылка сообщения админам"""
+        # Определяем тип контента
         content_preview = ""
         if message.text:
             content_preview = f"\n💬 {message.text[:100]}{'...' if len(message.text) > 100 else ''}"
@@ -463,7 +462,7 @@ class MessageForwardingBot:
             f"<b>ID:</b> <code>{user_data['user_id']}</code>\n"
             f"<b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
             f"{content_preview}\n\n"
-            f"<i>Ответить можно в Mini App: нажми /app</i>"
+            f"<i>Ответьте через: #ID текст</i>"
         )
         
         admins = await self.db.get_admins()
@@ -471,7 +470,6 @@ class MessageForwardingBot:
         
         for admin_id in admins:
             try:
-                # Отправляем текстовое уведомление
                 await self.bot.send_message(admin_id, text)
                 
                 # Если есть медиа, отправляем отдельно
@@ -497,7 +495,6 @@ class MessageForwardingBot:
         async def cmd_start(message: Message):
             await self.save_user_from_message(message)
             
-            # Кнопка для открытия Mini App
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[[
                     InlineKeyboardButton(
@@ -509,21 +506,18 @@ class MessageForwardingBot:
             
             await message.answer(
                 f"👋 <b>Привет, {message.from_user.first_name or 'пользователь'}!</b>\n\n"
-                f"Это бот для обратной связи.\n\n"
-                f"📱 <b>Нажми кнопку ниже, чтобы открыть приложение</b>\n"
-                f"Там ты сможешь:\n"
-                f"• Отправлять сообщения\n"
-                f"• Смотреть историю переписки\n"
-                f"• Получать уведомления об ответах\n\n"
+                f"📱 <b>Это бот для обратной связи</b>\n\n"
+                f"<b>Как это работает:</b>\n"
+                f"1️⃣ Нажми кнопку ниже\n"
+                f"2️⃣ Отправляй сообщения в приложении\n"
+                f"3️⃣ Ответы будут приходить сюда\n\n"
                 f"⏱ Лимит: {RATE_LIMIT_MINUTES} минут между сообщениями",
                 reply_markup=keyboard
             )
             
             user_data = await self.db.get_user(message.from_user.id)
             await self.notify_admins(
-                f"👤 <b>Новый пользователь:</b>\n"
-                f"• {self.get_user_info(user_data)}\n"
-                f"• ID: {message.from_user.id}",
+                f"👤 <b>Новый пользователь:</b> {self.get_user_info(user_data)}",
                 exclude_user_id=message.from_user.id
             )
         
@@ -551,10 +545,10 @@ class MessageForwardingBot:
                     "• /app - открыть Mini App\n"
                     "• /stats - статистика\n"
                     "• /users - список пользователей\n"
+                    "• #ID текст - ответить на сообщение\n"
                     "• /ban ID причина - заблокировать\n"
                     "• /unban ID - разблокировать\n"
-                    "• /admin - управление админами\n\n"
-                    f"<i>Все операции лучше делать в Mini App</i>"
+                    "• /admin - управление админами"
                 )
             else:
                 await message.answer(
@@ -562,7 +556,7 @@ class MessageForwardingBot:
                     "• /start - начать работу\n"
                     "• /app - открыть приложение\n"
                     "• /help - помощь\n\n"
-                    f"📱 <b>Используй Mini App для отправки сообщений</b>"
+                    f"📱 Используй Mini App для отправки сообщений"
                 )
         
         @self.router.message(Command("stats"))
@@ -572,41 +566,21 @@ class MessageForwardingBot:
             
             stats = await self.db.get_stats()
             user_stats = await self.db.get_users_count()
-            messages_stats = await self.db.get_messages_stats()
-            most_active = await self.db.get_most_active_user()
             admins = await self.db.get_admins()
             
             text = (
-                f"📊 <b>Статистика бота</b>\n\n"
+                f"📊 <b>Статистика</b>\n\n"
                 f"<b>Пользователи:</b>\n"
                 f"• Всего: {user_stats['total']}\n"
                 f"• Активных (24ч): {user_stats['active_today']}\n"
-                f"• Заблокированных: {user_stats['banned']}\n"
-                f"• Администраторов: {len(admins)}\n\n"
+                f"• Заблокировано: {user_stats['banned']}\n"
+                f"• Админов: {len(admins)}\n\n"
                 f"<b>Сообщения:</b>\n"
-                f"• Всего отправлено: {stats['total_messages']}\n"
-                f"• Всего сообщений в БД: {messages_stats['total']}\n"
-                f"• Отвеченных: {messages_stats['answered']}\n"
-                f"• Успешно переслано: {stats['successful_forwards']}\n"
-                f"• Ошибок при пересылке: {stats['failed_forwards']}\n"
-                f"• Блокировок по лимиту: {stats['rate_limit_blocks']}\n"
-                f"• Выдано банов: {stats['bans_issued']}\n"
+                f"• Всего: {stats['total_messages']}\n"
+                f"• Ответов: {stats['answers_sent']}\n"
+                f"• Банов: {stats['bans_issued']}"
             )
             
-            if 'answers_sent' in stats:
-                text += f"• Отправлено ответов: {stats['answers_sent']}\n"
-            
-            text += "\n"
-            
-            if most_active and most_active.get('messages_sent', 0) > 0:
-                text += (
-                    f"<b>Самый активный:</b>\n"
-                    f"• {self.get_user_info(most_active)}\n"
-                    f"• Сообщений: {most_active['messages_sent']}\n"
-                    f"• Первое сообщение: {most_active['created_at'].strftime('%d.%m.%Y')}\n\n"
-                )
-            
-            text += f"<i>Обновлено: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}</i>"
             await message.answer(text)
         
         @self.router.message(Command("users"))
@@ -616,123 +590,80 @@ class MessageForwardingBot:
             
             users = await self.db.get_all_users()
             if not users:
-                return await message.answer("📭 <b>Пользователей пока нет</b>")
+                return await message.answer("📭 Нет пользователей")
             
-            text = "👥 <b>Список пользователей:</b>\n\n"
-            for i, user in enumerate(users[:50], 1):
+            text = "👥 <b>Пользователи:</b>\n\n"
+            for i, user in enumerate(users[:20], 1):
                 status = '🚫' if user.get('is_banned') else '✅'
                 is_admin = await self.db.is_admin(user['user_id'])
                 admin_star = '👑 ' if is_admin else ''
-                
-                # Получаем последнее сообщение пользователя
-                last_msgs = await self.db.get_user_messages(user['user_id'], 1)
-                last_msg_info = ""
-                if last_msgs:
-                    last_msg_info = f" | Посл. #{last_msgs[0]['message_id']}"
-                
-                text += f"{i}. {status} {admin_star}{self.get_user_info(user)} | ID: <code>{user['user_id']}</code> | Сообщений: {user.get('messages_sent', 0)}{last_msg_info}\n"
+                text += f"{i}. {status} {admin_star}{self.get_user_info(user)} | {user.get('messages_sent', 0)} msg\n"
             
-            if len(users) > 50:
-                text += f"\n<i>Показано 50 из {len(users)} пользователей</i>"
+            if len(users) > 20:
+                text += f"\n<i>Показано 20 из {len(users)}</i>"
             
             await message.answer(text)
         
         @self.router.message(Command("ban"))
         async def cmd_ban(message: Message):
             if not await self.db.is_admin(message.from_user.id):
-                return await message.answer("❌ У вас нет прав для использования этой команды.")
+                return await message.answer("❌ Нет прав")
             
             try:
                 args = message.text.split()[1:]
                 if len(args) < 2:
-                    return await message.answer(
-                        "❌ <b>Неверный формат команды</b>\n\n"
-                        "Используйте: <code>/ban PEER_ID Причина [Время в часах]</code>"
-                    )
+                    return await message.answer("❌ /ban ID причина [часы]")
                 
                 peer_id = int(args[0])
                 
                 if await self.db.is_admin(peer_id):
-                    return await message.answer("❌ Нельзя заблокировать администратора.")
+                    return await message.answer("❌ Нельзя заблокировать админа")
                 
                 reason = " ".join(args[1:-1]) if len(args) > 2 and args[-1].isdigit() else " ".join(args[1:])
                 hours = int(args[-1]) if len(args) > 2 and args[-1].isdigit() else None
                 
                 if hours and (hours <= 0 or hours > MAX_BAN_HOURS):
-                    return await message.answer(
-                        f"❌ Время бана должно быть от 1 до {MAX_BAN_HOURS} часов"
-                    )
-                
-                try:
-                    user = await self.bot.get_chat(peer_id)
-                    await self.db.save_user(
-                        user_id=peer_id,
-                        username=user.username,
-                        first_name=user.first_name,
-                        last_name=user.last_name
-                    )
-                except:
-                    await self.db.save_user(user_id=peer_id)
+                    return await message.answer(f"❌ Часы: 1-{MAX_BAN_HOURS}")
                 
                 ban_until = datetime.now() + timedelta(hours=hours) if hours else None
                 await self.db.ban_user(peer_id, reason, ban_until)
                 await self.db.update_stats(bans_issued=1)
                 
-                ban_duration = f"на {hours} часов" if hours else "навсегда"
-                user_data = await self.db.get_user(peer_id)
+                ban_duration = f"на {hours} ч" if hours else "навсегда"
+                await message.answer(f"✅ Пользователь {peer_id} заблокирован {ban_duration}")
                 
-                await message.answer(
-                    f"✅ <b>Пользователь заблокирован</b>\n\n"
-                    f"<b>Информация:</b> {self.get_user_info(user_data)}\n"
-                    f"<b>ID:</b> <code>{peer_id}</code>\n"
-                    f"<b>Причина:</b> {reason}\n"
-                    f"<b>Длительность:</b> {ban_duration}"
-                )
-                
-            except ValueError:
-                await message.answer("❌ Неверный формат Peer ID")
             except Exception as e:
-                await message.answer(f"❌ Ошибка: {str(e)}")
+                await message.answer(f"❌ Ошибка: {e}")
         
         @self.router.message(Command("unban"))
         async def cmd_unban(message: Message):
             if not await self.db.is_admin(message.from_user.id):
-                return await message.answer("❌ У вас нет прав для использования этой команды.")
+                return await message.answer("❌ Нет прав")
             
             try:
                 args = message.text.split()[1:]
                 if len(args) < 1:
-                    return await message.answer("❌ Используйте: <code>/unban PEER_ID</code>")
+                    return await message.answer("❌ /unban ID")
                 
                 peer_id = int(args[0])
-                user_data = await self.db.get_user(peer_id)
+                await self.db.unban_user(peer_id)
+                await message.answer(f"✅ Пользователь {peer_id} разблокирован")
                 
-                if user_data and user_data.get('is_banned'):
-                    await self.db.unban_user(peer_id)
-                    
-                    await message.answer(
-                        f"✅ <b>Пользователь разблокирован</b>\n\n"
-                        f"<b>Информация:</b> {self.get_user_info(user_data)}\n"
-                        f"<b>ID:</b> <code>{peer_id}</code>"
-                    )
-                else:
-                    await message.answer(f"ℹ️ Пользователь {peer_id} не заблокирован")
-            
-            except ValueError:
-                await message.answer("❌ Неверный формат Peer ID")
+            except Exception as e:
+                await message.answer(f"❌ Ошибка: {e}")
         
         @self.router.message(Command("admin"))
         async def cmd_admin(message: Message):
             if not await self.db.is_admin(message.from_user.id):
-                return await message.answer("❌ У вас нет прав для использования этой команды.")
+                return await message.answer("❌ Нет прав")
             
             text = message.text.split()
             if len(text) == 1:
                 await message.answer(
-                    "👑 <b>Управление администраторами</b>\n\n"
-                    "• <code>/admin add ID</code> - добавить\n"
-                    "• <code>/admin remove ID</code> - удалить\n"
-                    "• <code>/admin list</code> - список"
+                    "👑 <b>Управление админами</b>\n\n"
+                    "• /admin add ID - добавить\n"
+                    "• /admin remove ID - удалить\n"
+                    "• /admin list - список"
                 )
             elif len(text) >= 3:
                 action = text[1].lower()
@@ -741,80 +672,142 @@ class MessageForwardingBot:
                     
                     if action == "add":
                         if target_id == OWNER_ID:
-                            return await message.answer("👑 Владелец уже является администратором.")
+                            return await message.answer("👑 Владелец уже админ")
                         
                         if await self.db.add_admin(target_id, message.from_user.id):
-                            await message.answer(f"✅ Администратор {target_id} добавлен")
+                            await message.answer(f"✅ Админ {target_id} добавлен")
                         else:
-                            await message.answer("❌ Не удалось добавить администратора.")
+                            await message.answer("❌ Ошибка")
                     
                     elif action == "remove":
                         if target_id == OWNER_ID:
-                            return await message.answer("❌ Нельзя удалить владельца бота.")
+                            return await message.answer("❌ Нельзя удалить владельца")
                         
                         if await self.db.remove_admin(target_id):
-                            await message.answer(f"✅ Администратор {target_id} удален")
+                            await message.answer(f"✅ Админ {target_id} удален")
                         else:
-                            await message.answer("❌ Не удалось удалить администратора.")
+                            await message.answer("❌ Ошибка")
                 
                 except ValueError:
-                    await message.answer("❌ Неверный формат ID.")
+                    await message.answer("❌ Неверный ID")
             
             elif len(text) == 2 and text[1].lower() == "list":
                 admins = await self.db.get_admins()
-                admin_list_text = "👑 <b>Список администраторов:</b>\n\n"
-                
+                text = "👑 <b>Администраторы:</b>\n\n"
                 for i, admin_id in enumerate(admins, 1):
                     user_data = await self.db.get_user(admin_id) or {}
                     if admin_id == OWNER_ID:
-                        admin_list_text += f"{i}. 👑 {self.get_user_info(user_data)} | <code>{admin_id}</code> (владелец)\n"
+                        text += f"{i}. 👑 {self.get_user_info(user_data)} (владелец)\n"
                     else:
-                        admin_list_text += f"{i}. {self.get_user_info(user_data)} | <code>{admin_id}</code>\n"
-                
-                await message.answer(admin_list_text)
-        
-        @self.router.message(F.web_app_data)
-        async def handle_web_app_data(message: Message):
-            """Обработка данных из Mini App"""
-            data = message.web_app_data.data
-            try:
-                payload = json.loads(data)
-                action = payload.get('action')
-                user_id = message.from_user.id
-                
-                if action == 'send_message':
-                    # Пользователь отправил сообщение через Mini App
-                    text = payload.get('text', '')
-                    
-                    # Создаем временный объект сообщения для обработки
-                    message.text = text
-                    await self.process_user_message(message, from_webapp=True)
-                    
-                elif action == 'reply_message':
-                    # Админ отвечает на сообщение через Mini App
-                    if not await self.db.is_admin(user_id):
-                        return
-                    
-                    message_id = payload.get('message_id')
-                    answer_text = payload.get('answer')
-                    
-                    await self.process_admin_reply(message_id, answer_text, user_id)
-                    
-            except Exception as e:
-                logger.error(f"Ошибка обработки WebApp данных: {e}")
+                        text += f"{i}. {self.get_user_info(user_data)}\n"
+                await message.answer(text)
         
         @self.router.message()
         async def handle_message(message: Message):
-            """Обработка обычных сообщений"""
-            await self.process_user_message(message, from_webapp=False)
+            """Только для админов с командой #ID"""
+            user_id = message.from_user.id
+            is_admin = await self.db.is_admin(user_id)
+            
+            # Если это команда ответа #ID
+            if message.text and message.text.startswith('#'):
+                if is_admin:
+                    await self.handle_answer_command(message)
+                else:
+                    await message.answer("❌ Только администраторы могут отвечать")
+                return
+            
+            # Если админ пишет что-то другое
+            if is_admin:
+                await message.answer(
+                    "👑 <b>Для ответа используйте:</b>\n"
+                    "<code>#ID текст ответа</code>\n\n"
+                    "Например: #100569 Спасибо за обращение!"
+                )
+                return
+            
+            # Для обычных пользователей - только Mini App
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="📱 Открыть приложение", 
+                        web_app=WebAppInfo(url=APP_URL)
+                    )
+                ]]
+            )
+            
+            await message.answer(
+                "❌ <b>Отправка сообщений через чат отключена</b>\n\n"
+                "📱 <b>Используйте Mini App:</b>\n"
+                "Нажмите кнопку ниже, чтобы открыть приложение",
+                reply_markup=keyboard
+            )
     
-    async def process_user_message(self, message: Message, from_webapp: bool = False):
-        """Обработка сообщения от пользователя"""
-        user_id = message.from_user.id
+    async def handle_answer_command(self, message: Message):
+        """Обработка ответа админа через #ID"""
+        text = message.text.strip()
+        match = re.match(r'^#(\d+)\s+(.+)$', text, re.DOTALL)
         
-        # Сохраняем пользователя
-        await self.save_user_from_message(message)
+        if not match:
+            await message.answer("❌ Неверный формат. Используйте: #ID текст ответа")
+            return
         
+        message_id = int(match.group(1))
+        answer_text = match.group(2).strip()
+        
+        # Получаем сообщение
+        original = await self.db.get_message(message_id)
+        if not original:
+            await message.answer(f"❌ Сообщение #{message_id} не найдено")
+            return
+        
+        user_id = original['user_id']
+        
+        # Проверяем бан
+        is_banned, _ = await self.check_ban_status(user_id)
+        if is_banned:
+            await message.answer("❌ Пользователь заблокирован")
+            return
+        
+        # Отправляем уведомление с кнопкой
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="📱 Открыть переписку", 
+                    web_app=WebAppInfo(url=APP_URL)
+                )
+            ]]
+        )
+        
+        try:
+            admin_name = self.get_user_info(await self.db.get_user(message.from_user.id))
+            
+            await self.bot.send_message(
+                user_id,
+                f"🔔 <b>Вам поступил ответ на сообщение #{message_id}</b>\n\n"
+                f"{answer_text}\n\n"
+                f"<i>Ответил: {admin_name}</i>",
+                reply_markup=keyboard
+            )
+            
+            # Отмечаем как отвеченное
+            await self.db.mark_message_answered(message_id, message.from_user.id, answer_text)
+            await self.db.update_stats(answers_sent=1)
+            
+            await message.answer(f"✅ Ответ на #{message_id} отправлен")
+            
+            # Уведомляем других админов
+            user_info = await self.db.get_user(user_id)
+            await self.notify_admins(
+                f"💬 Админ {admin_name} ответил на #{message_id} пользователю {self.get_user_info(user_info)}",
+                exclude_user_id=message.from_user.id
+            )
+            
+        except Exception as e:
+            logger.error(f"Reply error: {e}")
+            await message.answer("❌ Не удалось отправить ответ")
+    
+    async def process_web_app_message(self, user_id: int, text: str):
+        """Обработка сообщения из Mini App"""
         # Проверяем бан
         user_data = await self.db.get_user(user_id)
         if user_data and user_data.get('is_banned'):
@@ -822,15 +815,9 @@ class MessageForwardingBot:
             if ban_until and datetime.now() > ban_until:
                 await self.db.unban_user(user_id)
             else:
-                ban_info = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}" if ban_until else "навсегда"
-                if not from_webapp:
-                    await message.answer(
-                        f"🚫 <b>Вы заблокированы {ban_info}</b>\n"
-                        f"Причина: {user_data.get('ban_reason', 'Не указана')}"
-                    )
-                return
+                return False, "banned"
         
-        # Проверяем лимит для обычных пользователей
+        # Проверяем лимит
         if not await self.db.is_admin(user_id):
             if user_data and user_data.get('last_message_time'):
                 last_time = user_data['last_message_time']
@@ -839,48 +826,33 @@ class MessageForwardingBot:
                 
                 time_diff = (datetime.now() - last_time).total_seconds() / 60
                 if time_diff < RATE_LIMIT_MINUTES:
-                    remaining = RATE_LIMIT_MINUTES - int(time_diff)
-                    await self.db.update_stats(rate_limit_blocks=1)
-                    if not from_webapp:
-                        await message.answer(
-                            f"⏳ <b>Подождите {remaining} минут</b>\n\n"
-                            f"Вы можете отправить только одно сообщение за {RATE_LIMIT_MINUTES} минут."
-                        )
-                    return
+                    return False, "rate_limit"
         
         try:
             # Получаем следующий ID
             message_id = await self.db.get_next_message_id()
             
             # Сохраняем сообщение
-            content_type = str(message.content_type)
-            file_id = None
-            text = message.text if message.text else None
-            caption = message.caption if message.caption else None
-            
-            if message.photo:
-                file_id = message.photo[-1].file_id
-            elif message.video:
-                file_id = message.video.file_id
-            elif message.voice:
-                file_id = message.voice.file_id
-            elif message.document:
-                file_id = message.document.file_id
-            elif message.sticker:
-                file_id = message.sticker.file_id
-            
             await self.db.save_message(
                 message_id=message_id,
                 user_id=user_id,
-                content_type=content_type,
-                file_id=file_id,
-                caption=caption,
+                content_type='text',
                 text=text
             )
             
-            # Пересылаем админам
+            # Создаем временное сообщение для пересылки
+            class TempMessage:
+                def __init__(self, text, user_id):
+                    self.text = text
+                    self.caption = None
+                    self.content_type = 'text'
+                    self.from_user = type('User', (), {'id': user_id})()
+            
+            temp_msg = TempMessage(text, user_id)
             user_data = await self.db.get_user(user_id)
-            success_count = await self.forward_message_to_admins(message, user_data, message_id)
+            
+            # Пересылаем админам
+            success_count = await self.forward_message_to_admins(temp_msg, user_data, message_id)
             
             if success_count > 0:
                 # Обновляем статистику
@@ -891,56 +863,17 @@ class MessageForwardingBot:
                     successful_forwards=success_count
                 )
                 
-                # Подтверждение пользователю
-                if not from_webapp:
-                    await message.answer(
-                        f"✅ <b>Сообщение #{message_id} отправлено!</b>\n\n"
-                        f"🔔 Ответ придет в этот чат с уведомлением"
-                    )
-                
-                logger.info(f"Сообщение #{message_id} от {user_id} переслано {success_count} админам")
+                return True, message_id
             else:
-                raise Exception("Нет доступных администраторов")
+                return False, "no_admins"
                 
         except Exception as e:
-            logger.error(f"Ошибка: {e}")
+            logger.error(f"Process web app error: {e}")
             await self.db.update_stats(failed_forwards=1)
-            if not from_webapp:
-                await message.answer("❌ Не удалось отправить сообщение. Попробуйте позже.")
-    
-    async def process_admin_reply(self, message_id: int, answer_text: str, admin_id: int):
-        """Обработка ответа админа на сообщение"""
-        try:
-            # Получаем исходное сообщение
-            original = await self.db.get_message(message_id)
-            if not original:
-                return
-            
-            user_id = original['user_id']
-            admin_data = await self.db.get_user(admin_id)
-            admin_name = self.get_user_info(admin_data) if admin_data else f"ID: {admin_id}"
-            
-            # Отправляем уведомление пользователю
-            success = await self.send_reply_notification(user_id, message_id, answer_text, admin_name)
-            
-            if success:
-                # Отмечаем как отвеченное
-                await self.db.mark_message_answered(message_id, admin_id)
-                await self.db.update_stats(answers_sent=1)
-                
-                # Уведомляем других админов
-                user_info = await self.db.get_user(user_id)
-                await self.notify_admins(
-                    f"💬 <b>Админ ответил на #{message_id}</b>\n"
-                    f"Пользователь: {self.get_user_info(user_info)}\n"
-                    f"Админ: {admin_name}",
-                    exclude_user_id=admin_id
-                )
-        except Exception as e:
-            logger.error(f"Ошибка ответа: {e}")
+            return False, "error"
     
     async def shutdown(self, sig=None):
-        """Грациозное завершение работы"""
+        """Грациозное завершение"""
         logger.info(f"Сигнал {sig}, завершение...")
         self.is_running = False
         await self.dp.stop_polling()
