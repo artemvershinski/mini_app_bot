@@ -7,7 +7,6 @@ from aiogram.filters import CommandStart, Command
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 import re
 import json
@@ -19,8 +18,7 @@ MAX_BAN_HOURS = 720
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 APP_URL = os.getenv("APP_URL", "https://mini-app-bot-lzya.onrender.com")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://mini-app-bot-lzya.onrender.com/webhook")
-PORT = int(os.getenv("PORT", 8080))
+PORT = int(os.getenv("PORT", 10000))
 MESSAGE_ID_START = 100569
 
 logging.basicConfig(
@@ -36,13 +34,11 @@ class Database:
         self.pool = None
     
     async def create_pool(self):
-        """Create database connection pool"""
         self.pool = await asyncpg.create_pool(self.dsn, min_size=10, max_size=20)
         await self.init_db()
         logger.info("✅ PostgreSQL connection established")
     
     async def init_db(self):
-        """Initialize database tables"""
         async with self.pool.acquire() as conn:
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS users (
@@ -167,7 +163,20 @@ class Database:
                 WHERE message_id = $1
             ''', message_id, answered_by, answer_text)
     
-    async def get_user_messages(self, user_id: int) -> List[Dict]:
+    async def get_user_inbox(self, user_id: int) -> List[Dict]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT m.message_id, m.answered_at, m.answered_by, m.answer_text,
+                       u.first_name as answered_by_name, orig.text as original_text
+                FROM messages m
+                JOIN messages orig ON m.message_id = orig.message_id
+                LEFT JOIN users u ON m.answered_by = u.user_id
+                WHERE m.user_id = $1 AND m.is_answered = TRUE
+                ORDER BY m.answered_at DESC
+            ''', user_id)
+            return [dict(row) for row in rows]
+    
+    async def get_user_sent(self, user_id: int) -> List[Dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT m.*, 
@@ -176,18 +185,6 @@ class Database:
                 LEFT JOIN users u ON m.answered_by = u.user_id
                 WHERE m.user_id = $1
                 ORDER BY m.forwarded_at DESC
-            ''', user_id)
-            return [dict(row) for row in rows]
-    
-    async def get_user_inbox(self, user_id: int) -> List[Dict]:
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch('''
-                SELECT m.message_id, m.answered_at, m.answered_by, m.answer_text,
-                       u.first_name as answered_by_name, m.text as original_text
-                FROM messages m
-                LEFT JOIN users u ON m.answered_by = u.user_id
-                WHERE m.user_id = $1 AND m.is_answered = TRUE
-                ORDER BY m.answered_at DESC
             ''', user_id)
             return [dict(row) for row in rows]
     
@@ -827,9 +824,6 @@ class MessageForwardingBot:
         await self.dp.stop_polling()
         await self.db.close()
     
-    async def run_webhook(self, app: web.Application):
-        await setup_application(app, self.dp, skip_updates=False)
-    
     async def run_polling(self):
         try:
             await self.bot.delete_webhook(drop_pending_updates=True)
@@ -889,12 +883,55 @@ async def main():
             logger.error(f"Web app handler error: {e}")
             return web.json_response({'ok': False, 'error': str(e)})
     
+    async def api_auth_handler(request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            init_data = data.get('initData')
+            
+            # Здесь должна быть валидация init_data
+            # Для простоты возвращаем успех
+            return web.json_response({
+                'ok': True,
+                'user': {
+                    'id': 1,
+                    'is_admin': True,
+                    'first_name': 'Test',
+                    'username': 'test',
+                    'unanswered': 0
+                }
+            })
+        except Exception as e:
+            logger.error(f"Auth handler error: {e}")
+            return web.json_response({'ok': False, 'error': str(e)})
+    
+    async def api_messages_inbox_handler(request: web.Request) -> web.Response:
+        try:
+            # В реальном приложении здесь получаем user_id из init_data
+            user_id = 1  # Заглушка
+            messages = await db.get_user_inbox(user_id)
+            return web.json_response({'messages': messages})
+        except Exception as e:
+            logger.error(f"Inbox handler error: {e}")
+            return web.json_response({'messages': []})
+    
+    async def api_messages_sent_handler(request: web.Request) -> web.Response:
+        try:
+            user_id = 1  # Заглушка
+            messages = await db.get_user_sent(user_id)
+            return web.json_response({'messages': messages})
+        except Exception as e:
+            logger.error(f"Sent handler error: {e}")
+            return web.json_response({'messages': []})
+    
     async def health_handler(request: web.Request) -> web.Response:
         return web.Response(text="OK")
     
-    # ИСПРАВЛЕНИЕ: aiohttp использует add_post(), а не post()
+    # Регистрируем маршруты
     app.router.add_post('/webhook', webhook_handler)
     app.router.add_post('/api/send', web_app_handler)
+    app.router.add_post('/api/auth', api_auth_handler)
+    app.router.add_get('/api/messages/inbox', api_messages_inbox_handler)
+    app.router.add_get('/api/messages/sent', api_messages_sent_handler)
     app.router.add_get('/health', health_handler)
     
     runner = web.AppRunner(app)
@@ -902,8 +939,8 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
     
-    logger.info(f"🚀 Webhook server started on port {PORT}")
-    logger.info(f"📱 Mini App API available at /api/send")
+    logger.info(f"🚀 HTTP server started on port {PORT}")
+    logger.info(f"📱 API endpoints: /api/auth, /api/send, /api/messages/inbox, /api/messages/sent")
     
     try:
         await bot.run_polling()
