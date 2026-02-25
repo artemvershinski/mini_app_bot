@@ -11,7 +11,7 @@
             --bg-primary: #1e1e1e;
             --bg-secondary: #2d2d2d;
             --bg-tertiary: #3a3a3a;
-            --accent: #de8aff;
+            --accent: #9b59b6;
             --accent-light: #b07cc6;
             --text-primary: #ffffff;
             --text-secondary: #b0b0b0;
@@ -49,6 +49,7 @@
             background: var(--bg-primary);
         }
 
+        /* Табы – минималистичные */
         .tabs {
             display: flex;
             gap: 4px;
@@ -75,6 +76,7 @@
             box-shadow: inset 0 -2px 0 var(--accent);
         }
 
+        /* Контент – скроллируемая область */
         .content {
             flex: 1;
             overflow-y: auto;
@@ -104,6 +106,7 @@
             display: block;
         }
 
+        /* Карточки сообщений */
         .messages-list {
             display: flex;
             flex-direction: column;
@@ -187,24 +190,7 @@
             color: var(--text-secondary);
         }
 
-        .reply-btn {
-            width: 100%;
-            margin-top: 12px;
-            padding: 12px;
-            background: transparent;
-            border: 1px solid var(--accent);
-            border-radius: var(--radius-sm);
-            color: var(--accent-light);
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .reply-btn:hover {
-            background: rgba(155, 89, 182, 0.1);
-        }
-
+        /* Поле ввода */
         .message-input-container {
             padding: 16px;
             background: var(--bg-primary);
@@ -274,6 +260,7 @@
             background: var(--accent-light);
         }
 
+        /* Состояния загрузки и пустые */
         .loading {
             text-align: center;
             padding: 40px 20px;
@@ -309,12 +296,23 @@
         .hidden {
             display: none !important;
         }
+
+        /* Скрытые элементы, необходимые для скрипта (userName, unansweredBadge) */
+        .script-required {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="app">
+        <!-- Скрытые элементы, необходимые для работы скрипта (не влияют на отображение) -->
+        <div class="script-required">
+            <span id="userName"></span>
+            <span id="unansweredBadge" class="hidden">0</span>
+        </div>
+
         <nav class="tabs">
-            <button class="tab-btn" data-tab="inbox">Ответы</button>
+            <button class="tab-btn" data-tab="inbox">Входящие</button>
             <button class="tab-btn active" data-tab="sent">Отправленные</button>
         </nav>
 
@@ -331,7 +329,7 @@
                 <div class="messages-list" id="sentMessages">
                     <div class="loading">
                         <div class="loading-spinner"></div>
-                        loading...
+                        Загрузка...
                     </div>
                 </div>
             </div>
