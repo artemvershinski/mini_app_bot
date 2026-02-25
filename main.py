@@ -10,6 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 import re
+import json
 
 # Configuration
 OWNER_ID = 989062605
@@ -518,7 +519,7 @@ class MessageForwardingBot:
                     "• /start - начать работу\n"
                     "• /app - открыть приложение\n"
                     "• /help - помощь\n\n"
-                    f"📱 Используй Mini App для отправ��и сообщений"
+                    f"📱 Используй Mini App для отправки сообщений"
                 )
         
         @self.router.message(Command("stats"))
@@ -860,9 +861,14 @@ async def main():
     app = web.Application()
     
     async def webhook_handler(request: web.Request) -> web.Response:
-        update = await request.json()
-        await bot.dp.feed_update(bot.bot, Update(**update))
-        return web.Response(text="OK")
+        try:
+            update_data = await request.json()
+            update = Update(**update_data)
+            await bot.dp.feed_update(bot.bot, update)
+            return web.Response(text="OK")
+        except Exception as e:
+            logger.error(f"Webhook error: {e}")
+            return web.Response(text="Error", status=500)
     
     async def web_app_handler(request: web.Request) -> web.Response:
         try:
@@ -886,9 +892,10 @@ async def main():
     async def health_handler(request: web.Request) -> web.Response:
         return web.Response(text="OK")
     
-    app.router.post('/webhook', webhook_handler)
-    app.router.post('/api/send', web_app_handler)
-    app.router.get('/health', health_handler)
+    # ИСПРАВЛЕНИЕ: aiohttp использует add_post(), а не post()
+    app.router.add_post('/webhook', webhook_handler)
+    app.router.add_post('/api/send', web_app_handler)
+    app.router.add_get('/health', health_handler)
     
     runner = web.AppRunner(app)
     await runner.setup()
