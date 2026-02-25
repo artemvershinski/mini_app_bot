@@ -93,7 +93,7 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             ''')
-            # Проверяем наличие колонки answer_text (на случай, если её нет в старой таблице)
+            # Check if column answer_text exists (for old tables)
             try:
                 await conn.execute('SELECT answer_text FROM messages LIMIT 1')
             except asyncpg.UndefinedColumnError:
@@ -101,7 +101,7 @@ class Database:
                 await conn.execute('ALTER TABLE messages ADD COLUMN answer_text TEXT')
                 logger.info("✅ Column answer_text added")
 
-            # Индексы
+            # Indexes
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_is_answered ON messages(is_answered)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_forwarded_at ON messages(forwarded_at)')
@@ -175,6 +175,39 @@ class Database:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow('SELECT * FROM messages WHERE message_id = $1', message_id)
             return dict(row) if row else None
+
+    async def get_message_with_details(self, message_id: int) -> Optional[Dict]:
+        """Get message with user info and answering admin name."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow('''
+                SELECT m.*, 
+                       u.username, u.first_name as user_first_name, u.last_name as user_last_name,
+                       a.first_name as answered_by_name
+                FROM messages m
+                LEFT JOIN users u ON m.user_id = u.user_id
+                LEFT JOIN users a ON m.answered_by = a.user_id
+                WHERE m.message_id = $1
+            ''', message_id)
+            return dict(row) if row else None
+
+    async def delete_message(self, message_id: int) -> bool:
+        """Delete a message by ID."""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute('DELETE FROM messages WHERE message_id = $1', message_id)
+            return result[-1] == 'DELETE 1'  # True if one row deleted
+
+    async def get_unanswered_requests(self) -> List[Dict]:
+        """Get all unanswered messages with user info."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT m.message_id, m.text, m.forwarded_at, 
+                       u.user_id, u.username, u.first_name, u.last_name
+                FROM messages m
+                JOIN users u ON m.user_id = u.user_id
+                WHERE m.is_answered = FALSE
+                ORDER BY m.forwarded_at ASC
+            ''')
+            return [dict(row) for row in rows]
 
     async def mark_message_answered(self, message_id: int, answered_by: int, answer_text: str):
         async with self.pool.acquire() as conn:
@@ -315,17 +348,11 @@ class Database:
             active_today = await conn.fetchval('SELECT COUNT(*) FROM users WHERE updated_at > CURRENT_TIMESTAMP - INTERVAL \'24 hours\'')
             return {'total': total, 'banned': banned, 'active_today': active_today}
 
-    # Команда для очистки базы данных (только для админа)
     async def clear_database(self):
-        """Удаляет все сообщения, кроме тех, что связаны с админами? По заданию: удалить уже не нужную инфу по типу текст ответа, что в заявке было кто отправил и тд."""
-        # Поскольку задача нечёткая, удалим все сообщения и обнулим статистику,
-        # но оставим пользователей (админов и обычных). Можно также удалить пользователей,
-        # кроме админов и владельца, но рискованно. Остановимся на удалении всех сообщений и сбросе счётчика.
         async with self.pool.acquire() as conn:
             await conn.execute('DELETE FROM messages')
             await conn.execute('UPDATE message_counter SET last_message_id = $1 WHERE id = 1', MESSAGE_ID_START)
             await conn.execute('UPDATE stats SET total_messages = 0, successful_forwards = 0, failed_forwards = 0, answers_sent = 0 WHERE id = 1')
-            # Можно также сбросить messages_sent у пользователей
             await conn.execute('UPDATE users SET messages_sent = 0')
             logger.warning("🗑 Database cleared by admin command")
 
@@ -477,8 +504,11 @@ class MessageForwardingBot:
                     "• /app - открыть Mini App\n"
                     "• /stats - статистика\n"
                     "• /users - список пользователей\n"
+                    "• /requests - список неотвеченных обращений\n"
+                    "• /get #ID - информация о сообщении\n"
+                    "• /del #ID - удалить сообщение\n"
                     "• #ID текст - ответить на сообщение\n"
-                    "• /ban ID причина - заблокировать\n"
+                    "• /ban ID причина [часы] - заблокировать\n"
                     "• /unban ID - разблокировать\n"
                     "• /admin - управление админами\n"
                     "• /clear_db_1708 - очистить базу данных (удалить все сообщения)"
@@ -612,7 +642,6 @@ class MessageForwardingBot:
                         admin_text += f"{i}. {self.get_user_info(ud)}\n"
                 await message.answer(admin_text)
 
-        # Команда для очистки базы данных (доступна только админам)
         @self.router.message(Command("clear_db_1708"))
         async def cmd_clear_db(message: Message):
             user = message.from_user
@@ -620,6 +649,86 @@ class MessageForwardingBot:
                 return await message.answer("❌ Нет прав")
             await self.db.clear_database()
             await message.answer("✅ База данных очищена (все сообщения удалены, счётчик сброшен)")
+
+        # ---------- Новые команды для админов ----------
+        @self.router.message(Command("get"))
+        async def cmd_get_message(message: Message):
+            user = message.from_user
+            if not await self.db.is_admin(user.id):
+                return await message.answer("❌ Нет прав")
+            parts = message.text.split(maxsplit=1)
+            if len(parts) < 2:
+                return await message.answer("❌ Использование: /get #ID")
+            arg = parts[1].strip()
+            # Извлекаем цифры, если есть решётка
+            msg_id_str = arg.lstrip('#')
+            if not msg_id_str.isdigit():
+                return await message.answer("❌ Некорректный ID. Пример: /get #123 или /get 123")
+            msg_id = int(msg_id_str)
+            msg_data = await self.db.get_message_with_details(msg_id)
+            if not msg_data:
+                return await message.answer(f"❌ Сообщение #{msg_id} не найдено")
+
+            # Формируем ответ
+            user_info = f"{msg_data.get('user_first_name', '')} {msg_data.get('user_last_name', '')}".strip() or "No name"
+            if msg_data.get('username'):
+                user_info += f" (@{msg_data['username']})"
+            text = f"📄 <b>Сообщение #{msg_id}</b>\n"
+            text += f"👤 Отправитель: {user_info} (ID: {msg_data['user_id']})\n"
+            text += f"📅 Дата: {msg_data['forwarded_at'].strftime('%d.%m.%Y %H:%M') if msg_data['forwarded_at'] else 'N/A'}\n"
+            text += f"📝 Текст:\n{msg_data.get('text', '')}\n"
+            if msg_data.get('is_answered'):
+                answered_by = msg_data.get('answered_by_name') or f"ID {msg_data['answered_by']}"
+                text += f"✅ Ответ ({msg_data['answered_at'].strftime('%d.%m.%Y %H:%M') if msg_data['answered_at'] else ''}):\n{msg_data.get('answer_text', '')}\n"
+                text += f"👤 Ответил: {answered_by}\n"
+            else:
+                text += "⏳ Статус: ожидает ответа"
+            await message.answer(text)
+
+        @self.router.message(Command("del"))
+        async def cmd_delete_message(message: Message):
+            user = message.from_user
+            if not await self.db.is_admin(user.id):
+                return await message.answer("❌ Нет прав")
+            parts = message.text.split(maxsplit=1)
+            if len(parts) < 2:
+                return await message.answer("❌ Использование: /del #ID")
+            arg = parts[1].strip()
+            msg_id_str = arg.lstrip('#')
+            if not msg_id_str.isdigit():
+                return await message.answer("❌ Некорректный ID. Пример: /del #123")
+            msg_id = int(msg_id_str)
+            # Проверяем существование
+            msg_data = await self.db.get_message(msg_id)
+            if not msg_data:
+                return await message.answer(f"❌ Сообщение #{msg_id} не найдено")
+            deleted = await self.db.delete_message(msg_id)
+            if deleted:
+                await message.answer(f"✅ Сообщение #{msg_id} удалено")
+                logger.info(f"🗑 Admin {user.id} deleted message #{msg_id}")
+            else:
+                await message.answer(f"❌ Не удалось удалить сообщение #{msg_id}")
+
+        @self.router.message(Command("requests"))
+        async def cmd_requests(message: Message):
+            user = message.from_user
+            if not await self.db.is_admin(user.id):
+                return await message.answer("❌ Нет прав")
+            unanswered = await self.db.get_unanswered_requests()
+            if not unanswered:
+                await message.answer("✅ Нет неотвеченных обращений")
+                return
+            # Формируем список
+            text = "📋 <b>Неотвеченные обращения:</b>\n\n"
+            for req in unanswered[:20]:  # ограничим 20, чтобы не спамить
+                dt = req['forwarded_at'].strftime('%d.%m %H:%M') if req['forwarded_at'] else 'N/A'
+                user_name = req.get('first_name') or req.get('username') or f"ID {req['user_id']}"
+                msg_snippet = (req['text'][:50] + '…') if req['text'] and len(req['text']) > 50 else (req['text'] or '')
+                text += f"#{req['message_id']} от {dt} — {user_name}\n"
+                text += f"   {msg_snippet}\n\n"
+            if len(unanswered) > 20:
+                text += f"<i>… и ещё {len(unanswered)-20} обращений</i>"
+            await message.answer(text)
 
         @self.router.message()
         async def handle_message(message: Message):
@@ -657,7 +766,6 @@ class MessageForwardingBot:
             await message.answer("❌ Пользователь заблокирован")
             return
 
-        # Кнопка для открытия приложения
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="📱 Открыть переписку", web_app=WebAppInfo(url=APP_URL))
         ]])
@@ -665,23 +773,18 @@ class MessageForwardingBot:
         try:
             admin_name = self.get_user_info(await self.db.get_user(user.id))
 
-            # Отправляем уведомление пользователю с кнопкой
             await self.bot.send_message(
                 user_id,
                 f"🔔 <b>Вам поступил ответ на сообщение #{message_id}</b>\n\n"
-                f"{answer_text}\n\n"
                 f"<i>Посмотреть ответ можно в приложении.</i>",
                 reply_markup=keyboard
             )
 
-            # Отмечаем как отвеченное
             await self.db.mark_message_answered(message_id, user.id, answer_text)
             await self.db.update_stats(answers_sent=1)
 
-            # Подтверждение админу (успех)
             await message.answer(f"✅ Ответ на #{message_id} отправлен пользователю")
 
-            # Уведомляем других админов
             user_info = await self.db.get_user(user_id)
             await self.notify_admins(
                 f"💬 Админ {admin_name} ответил на #{message_id} пользователю {self.get_user_info(user_info)}",
@@ -806,7 +909,6 @@ async def main():
             logger.error(f"Webhook error: {e}")
             return web.Response(text="Error", status=500)
 
-    # Упрощённый auth handler (без проверки подписи)
     async def api_auth_handler(request: web.Request) -> web.Response:
         try:
             data = await request.json()
@@ -815,7 +917,6 @@ async def main():
             if not init_data:
                 return web.json_response({'ok': False, 'error': 'No initData'})
 
-            # Просто парсим строку запроса
             parsed = urllib.parse.parse_qs(init_data)
             user_str = parsed.get('user', ['{}'])[0]
             user_info = json.loads(urllib.parse.unquote(user_str))
@@ -827,7 +928,6 @@ async def main():
             await db.save_user(user_id, username=user_info.get('username'), first_name=user_info.get('first_name'), last_name=user_info.get('last_name'))
             log_user_action("AUTH", user_id, {'username': user_info.get('username'), 'first_name': user_info.get('first_name')})
 
-            # Проверка бана
             user_data = await db.get_user(user_id)
             is_banned = user_data and user_data.get('is_banned')
             if is_banned:
@@ -857,7 +957,6 @@ async def main():
             logger.error(f"Auth handler error: {e}\n{traceback.format_exc()}")
             return web.json_response({'ok': False, 'error': str(e)})
 
-    # Упрощённый send handler
     async def web_app_handler(request: web.Request) -> web.Response:
         try:
             data = await request.json()
