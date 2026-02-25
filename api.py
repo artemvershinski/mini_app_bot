@@ -30,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключаем статические файлы из папки mini_app
+# Подключаем статические файлы
 app.mount("/", StaticFiles(directory="mini_app", html=True), name="static")
 
 class Database:
@@ -60,13 +60,11 @@ class Database:
     
     async def save_message(self, user_id: int, text: str) -> int:
         async with self.pool.acquire() as conn:
-            # Получаем следующий ID
             result = await conn.fetchrow('''
                 UPDATE message_counter SET last_message_id = last_message_id + 1 WHERE id = 1 RETURNING last_message_id
             ''')
             message_id = result['last_message_id']
             
-            # Сохраняем сообщение
             await conn.execute('''
                 INSERT INTO messages (message_id, user_id, content_type, text)
                 VALUES ($1, $2, 'text', $3)
@@ -75,7 +73,6 @@ class Database:
             return message_id
     
     async def get_user_inbox(self, user_id: int) -> List[Dict]:
-        """Получение входящих (ответы админов)"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT m.message_id, m.answered_at, m.answered_by, m.answer_text,
@@ -90,7 +87,6 @@ class Database:
             return [dict(row) for row in rows]
     
     async def get_user_sent(self, user_id: int) -> List[Dict]:
-        """Получение отправленных сообщений"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT m.*, 
@@ -112,7 +108,6 @@ class Database:
             )
             return exists
 
-# Создаем экземпляр БД
 db = Database(DATABASE_URL)
 
 @app.on_event("startup")
@@ -124,7 +119,6 @@ async def shutdown():
     await db.close()
 
 def validate_telegram_data(init_data: str) -> Optional[Dict]:
-    """Проверка подписи от Telegram"""
     try:
         data = {}
         for item in init_data.split('&'):
@@ -146,12 +140,11 @@ def validate_telegram_data(init_data: str) -> Optional[Dict]:
 
 @app.get("/")
 async def root():
-    """Корневой эндпоинт - отдает статический файл"""
     return JSONResponse({"message": "Mini App Bot API is running"})
 
+# ИСПРАВЛЕНИЕ: Добавлен POST-эндпоинт для /api/auth
 @app.post("/api/auth")
 async def auth(request: Request):
-    """Аутентификация пользователя"""
     try:
         body = await request.json()
         init_data = body.get('initData')
@@ -166,7 +159,6 @@ async def auth(request: Request):
         user = json.loads(user_data.get('user', '{}'))
         user_id = int(user.get('id'))
         
-        db_user = await db.get_user(user_id)
         is_admin = await db.is_admin(user_id)
         unanswered = await db.get_unanswered_count(user_id) if not is_admin else 0
         
@@ -186,7 +178,6 @@ async def auth(request: Request):
 
 @app.get("/api/messages/inbox")
 async def get_inbox(request: Request):
-    """Входящие сообщения (ответы админов)"""
     init_data = request.headers.get('X-Telegram-Init-Data')
     if not init_data:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -208,7 +199,6 @@ async def get_inbox(request: Request):
 
 @app.get("/api/messages/sent")
 async def get_sent(request: Request):
-    """Отправленные сообщения пользователя"""
     init_data = request.headers.get('X-Telegram-Init-Data')
     if not init_data:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -232,7 +222,6 @@ async def get_sent(request: Request):
 
 @app.post("/api/send")
 async def send_message(request: Request):
-    """Отправка сообщения из Mini App"""
     try:
         body = await request.json()
         init_data = body.get('initData')
@@ -251,25 +240,9 @@ async def send_message(request: Request):
         user = json.loads(user_data.get('user', '{}'))
         user_id = int(user.get('id'))
         
-        # Проверяем бан
-        db_user = await db.get_user(user_id)
-        if db_user and db_user.get('is_banned'):
-            ban_until = db_user.get('ban_until')
-            if ban_until and datetime.now() > ban_until.replace(tzinfo=None):
-                # Автоматически разбаниваем если время вышло
-                await db.unban_user(user_id)
-            else:
-                return JSONResponse({"error": "User is banned"}, status_code=403)
-        
-        # Сохраняем сообщение
         message_id = await db.save_message(user_id, text)
         
         return {"ok": True, "message_id": message_id}
     except Exception as e:
         logger.error(f"Send error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.post("/mini-app/")
-async def mini_app_handler(request: dict):
-    """Обработчик запросов от мини-приложения"""
-    return {"status": "success", "data": request}
