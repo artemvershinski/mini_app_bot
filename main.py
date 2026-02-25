@@ -12,6 +12,8 @@ import re
 import json
 import traceback
 import urllib.parse
+import hmac
+import hashlib
 
 # Configuration
 OWNER_ID = 989062605
@@ -53,6 +55,8 @@ class Database:
     def __init__(self, dsn: str):
         self.dsn = dsn
         self.pool = None
+        self.admin_cache = []
+        self.admin_cache_time = 0
     
     async def create_pool(self):
         """Create database connection pool"""
@@ -62,9 +66,10 @@ class Database:
         logger.info("✅ PostgreSQL connection established")
     
     async def init_db(self):
-        """Initialize database tables"""
+        """Initialize database tables with indexes"""
         logger.info("🔄 Initializing database tables...")
         async with self.pool.acquire() as conn:
+            # Таблица пользователей
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     user_id BIGINT PRIMARY KEY,
@@ -81,6 +86,7 @@ class Database:
                 )
             ''')
             
+            # Таблица сообщений с индексами
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS messages (
                     message_id INTEGER PRIMARY KEY,
@@ -98,6 +104,12 @@ class Database:
                 )
             ''')
             
+            # Индексы для ускорения запросов
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_is_answered ON messages(is_answered)')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_forwarded_at ON messages(forwarded_at)')
+            
+            # Таблица администраторов
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS admins (
                     user_id BIGINT PRIMARY KEY,
@@ -108,6 +120,7 @@ class Database:
                 )
             ''')
             
+            # Таблица статистики
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS stats (
                     id SERIAL PRIMARY KEY,
@@ -121,6 +134,7 @@ class Database:
                 )
             ''')
             
+            # Таблица для хранения последнего ID сообщения
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS message_counter (
                     id INTEGER PRIMARY KEY,
@@ -157,7 +171,7 @@ class Database:
                 ON CONFLICT (id) DO NOTHING
             ''')
         
-        logger.info("✅ Database tables initialized")
+        logger.info("✅ Database tables initialized with indexes")
     
     async def get_next_message_id(self) -> int:
         async with self.pool.acquire() as conn:
@@ -229,6 +243,15 @@ class Database:
             row = await conn.fetchrow('SELECT * FROM users WHERE user_id = $1', user_id)
             return dict(row) if row else None
     
+    async def get_unanswered_count(self, user_id: int) -> int:
+        """Get count of unanswered messages for user"""
+        async with self.pool.acquire() as conn:
+            count = await conn.fetchval('''
+                SELECT COUNT(*) FROM messages 
+                WHERE user_id = $1 AND is_answered = FALSE
+            ''', user_id)
+            return count if count else 0
+    
     async def save_user(self, user_id: int, **kwargs):
         async with self.pool.acquire() as conn:
             exists = await conn.fetchval('SELECT EXISTS(SELECT 1 FROM users WHERE user_id = $1)', user_id)
@@ -280,6 +303,8 @@ class Database:
                 WHERE user_id = $3
             ''', reason, ban_until, user_id)
             logger.warning(f"🔨 User {user_id} banned. Reason: {reason}")
+            # Сбрасываем кэш админов при бане
+            self.admin_cache = []
     
     async def unban_user(self, user_id: int):
         async with self.pool.acquire() as conn:
@@ -309,6 +334,8 @@ class Database:
                         added_at = CURRENT_TIMESTAMP
                 ''', user_id, added_by)
                 logger.info(f"👑 User {user_id} added as admin by {added_by}")
+                # Сбрасываем кэш админов
+                self.admin_cache = []
                 return True
         except Exception as e:
             logger.error(f"Error adding admin {user_id}: {e}")
@@ -322,25 +349,29 @@ class Database:
             async with self.pool.acquire() as conn:
                 await conn.execute('DELETE FROM admins WHERE user_id = $1', user_id)
                 logger.info(f"👑 User {user_id} removed from admins")
+                # Сбрасываем кэш админов
+                self.admin_cache = []
                 return True
         except Exception as e:
             logger.error(f"Error removing admin {user_id}: {e}")
             return False
     
     async def get_admins(self) -> List[int]:
+        # Кэшируем список админов на 5 минут
+        if self.admin_cache and (datetime.now().timestamp() - self.admin_cache_time) < 300:
+            return self.admin_cache
+        
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('SELECT user_id FROM admins WHERE is_active = TRUE')
-            return [row['user_id'] for row in rows]
+            self.admin_cache = [row['user_id'] for row in rows]
+            self.admin_cache_time = datetime.now().timestamp()
+            return self.admin_cache
     
     async def is_admin(self, user_id: int) -> bool:
         if user_id == OWNER_ID:
             return True
-        async with self.pool.acquire() as conn:
-            exists = await conn.fetchval(
-                'SELECT EXISTS(SELECT 1 FROM admins WHERE user_id = $1 AND is_active = TRUE)',
-                user_id
-            )
-            return exists
+        admins = await self.get_admins()
+        return user_id in admins
     
     async def update_stats(self, **kwargs):
         async with self.pool.acquire() as conn:
@@ -886,17 +917,12 @@ class MessageForwardingBot:
                 logger.warning(f"⛔ Banned user {user_id} attempted to send message")
                 return False, "banned"
         
+        # Проверяем rate limit для обычных пользователей
         if not await self.db.is_admin(user_id):
-            if user_data and user_data.get('last_message_time'):
-                last_time = user_data['last_message_time']
-                if hasattr(last_time, 'tzinfo'):
-                    last_time = last_time.replace(tzinfo=None)
-                
-                time_diff = (datetime.now() - last_time).total_seconds() / 60
-                if time_diff < RATE_LIMIT_MINUTES:
-                    remaining = RATE_LIMIT_MINUTES - int(time_diff)
-                    logger.debug(f"⏳ Rate limit for user {user_id}: {remaining} minutes remaining")
-                    return False, "rate_limit"
+            can_send, remaining = await self.check_rate_limit(user_id)
+            if not can_send:
+                logger.warning(f"⏳ Rate limit for user {user_id}: {remaining} minutes remaining")
+                return False, f"rate_limit:{remaining}"
         
         try:
             message_id = await self.db.get_next_message_id()
@@ -955,7 +981,10 @@ class MessageForwardingBot:
     
     async def run_polling(self):
         try:
+            # Жесткий сброс вебхуков и ожидание
             await self.bot.delete_webhook(drop_pending_updates=True)
+            await asyncio.sleep(1)
+            
             logger.info("🤖 Bot started (polling mode)")
             logger.info(f"👑 Owner: {OWNER_ID}")
             logger.info(f"📱 Mini App URL: {APP_URL}")
@@ -973,6 +1002,42 @@ class MessageForwardingBot:
         finally:
             await self.bot.session.close()
             await self.db.close()
+
+# Функция для валидации данных от Telegram
+def validate_telegram_data(init_data: str) -> Optional[Dict]:
+    """Проверка подписи от Telegram"""
+    try:
+        # Парсим данные
+        data = {}
+        for item in init_data.split('&'):
+            if '=' in item:
+                key, value = item.split('=', 1)
+                data[key] = value
+        
+        hash_check = data.pop('hash', '')
+        
+        # Создаем строку для проверки
+        data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted(data.items()))
+        
+        # Создаем секретный ключ из токена бота
+        secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
+        
+        # Вычисляем HMAC
+        h = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256)
+        
+        # Сравниваем с полученным hash
+        if h.hexdigest() == hash_check:
+            # Парсим пользователя из строки
+            if 'user' in data:
+                try:
+                    data['user'] = json.loads(urllib.parse.unquote(data['user']))
+                except:
+                    pass
+            return data
+        return None
+    except Exception as e:
+        logger.error(f"Validation error: {e}")
+        return None
 
 async def main():
     logger.info("🚀 Starting application...")
@@ -1054,23 +1119,19 @@ async def main():
             data = await request.json()
             logger.debug(f"📱 WebApp request: {str(data)[:200]}...")
             
-            # Получаем initData для идентификации пользователя
             init_data = data.get('initData')
             if not init_data:
                 logger.error("❌ No initData in webapp request")
                 return web.json_response({'ok': False, 'error': 'No initData'})
             
-            # Парсим init_data для получения user_id
-            import urllib.parse
-            parsed = urllib.parse.parse_qs(init_data)
-            user_str = parsed.get('user', ['{}'])[0]
+            # Валидируем данные от Telegram
+            validated_data = validate_telegram_data(init_data)
+            if not validated_data:
+                logger.error("❌ Invalid Telegram data signature")
+                return web.json_response({'ok': False, 'error': 'Invalid signature'})
             
-            try:
-                import json
-                user_info = json.loads(user_str)
-                user_id = user_info.get('id')
-            except:
-                user_id = None
+            user_info = validated_data.get('user', {})
+            user_id = user_info.get('id')
             
             if not user_id:
                 logger.error("❌ Could not determine user_id from webapp request")
@@ -1108,46 +1169,71 @@ async def main():
                 logger.error("❌ No initData in auth request")
                 return web.json_response({'ok': False, 'error': 'No initData'})
             
-            # Парсим init_data для получения user_id
-            import urllib.parse
-            parsed = urllib.parse.parse_qs(init_data)
-            user_str = parsed.get('user', ['{}'])[0]
+            # Валидируем данные от Telegram
+            validated_data = validate_telegram_data(init_data)
+            if not validated_data:
+                logger.error("❌ Invalid Telegram data signature")
+                return web.json_response({'ok': False, 'error': 'Invalid signature'})
             
-            try:
-                user_info = json.loads(user_str)
-                user_id = user_info.get('id')
-                logger.info(f"👤 Auth from user {user_id} (@{user_info.get('username', 'N/A')})")
-                
-                # Сохраняем пользователя в БД
-                await db.save_user(
-                    user_id=user_id,
-                    username=user_info.get('username'),
-                    first_name=user_info.get('first_name'),
-                    last_name=user_info.get('last_name')
-                )
-                
-                log_user_action("AUTH", user_id, {
-                    'username': user_info.get('username'),
-                    'first_name': user_info.get('first_name')
-                })
-                
-                is_admin = await db.is_admin(user_id)
-                unanswered = await db.get_unanswered_count(user_id) if not is_admin else 0
-                
-                return web.json_response({
-                    'ok': True,
-                    'user': {
-                        'id': user_id,
-                        'is_admin': is_admin,
-                        'first_name': user_info.get('first_name'),
-                        'username': user_info.get('username'),
-                        'unanswered': unanswered
+            user_info = validated_data.get('user', {})
+            user_id = user_info.get('id')
+            
+            if not user_id:
+                logger.error("❌ Could not determine user_id from auth request")
+                return web.json_response({'ok': False, 'error': 'User ID not found'})
+            
+            logger.info(f"👤 Auth from user {user_id} (@{user_info.get('username', 'N/A')})")
+            
+            # Сохраняем пользователя в БД
+            await db.save_user(
+                user_id=user_id,
+                username=user_info.get('username'),
+                first_name=user_info.get('first_name'),
+                last_name=user_info.get('last_name')
+            )
+            
+            log_user_action("AUTH", user_id, {
+                'username': user_info.get('username'),
+                'first_name': user_info.get('first_name')
+            })
+            
+            # Проверяем, не забанен ли пользователь
+            user_data = await db.get_user(user_id)
+            is_banned = user_data and user_data.get('is_banned') if user_data else False
+            
+            if is_banned:
+                ban_until = user_data.get('ban_until')
+                if ban_until and datetime.now() > ban_until.replace(tzinfo=None):
+                    await db.unban_user(user_id)
+                    is_banned = False
+                    ban_info = None
+                else:
+                    ban_info = {
+                        'reason': user_data.get('ban_reason'),
+                        'until': ban_until.isoformat() if ban_until else None
                     }
-                })
-            except json.JSONDecodeError as e:
-                logger.error(f"❌ Failed to parse user data: {e}")
-                return web.json_response({'ok': False, 'error': 'Invalid user data'})
-                
+                    logger.warning(f"⛔ Banned user {user_id} attempted to auth")
+                    
+                    return web.json_response({
+                        'ok': False,
+                        'error': 'banned',
+                        'ban_info': ban_info
+                    }, status=403)
+            
+            is_admin = await db.is_admin(user_id)
+            unanswered = await db.get_unanswered_count(user_id) if not is_admin else 0
+            
+            return web.json_response({
+                'ok': True,
+                'user': {
+                    'id': user_id,
+                    'is_admin': is_admin,
+                    'is_banned': is_banned,
+                    'first_name': user_info.get('first_name'),
+                    'username': user_info.get('username'),
+                    'unanswered': unanswered
+                }
+            })
         except Exception as e:
             logger.error(f"Auth handler error: {e}")
             logger.error(traceback.format_exc())
@@ -1160,31 +1246,32 @@ async def main():
                 logger.error("❌ No initData in inbox request headers")
                 return web.json_response({'error': 'Unauthorized'}, status=401)
             
-            # Парсим init_data для получения user_id
-            import urllib.parse
-            parsed = urllib.parse.parse_qs(init_data)
-            user_str = parsed.get('user', ['{}'])[0]
+            validated_data = validate_telegram_data(init_data)
+            if not validated_data:
+                logger.error("❌ Invalid signature in inbox request")
+                return web.json_response({'error': 'Invalid signature'}, status=403)
             
-            try:
-                user_info = json.loads(user_str)
-                user_id = user_info.get('id')
-                logger.debug(f"📥 Inbox request from user {user_id}")
-                
-                messages = await db.get_user_inbox(user_id)
-                
-                # Форматируем даты для JSON
-                for msg in messages:
-                    if msg.get('answered_at'):
-                        if hasattr(msg['answered_at'], 'isoformat'):
-                            msg['answered_at'] = msg['answered_at'].isoformat()
-                
-                return web.json_response({'messages': messages})
-            except Exception as e:
-                logger.error(f"Error parsing inbox request: {e}")
-                return web.json_response({'messages': []})
+            user_info = validated_data.get('user', {})
+            user_id = user_info.get('id')
+            
+            if not user_id:
+                return web.json_response({'error': 'User ID not found'}, status=400)
+            
+            logger.debug(f"📥 Inbox request from user {user_id}")
+            
+            messages = await db.get_user_inbox(user_id)
+            
+            # Форматируем даты для JSON
+            for msg in messages:
+                if msg.get('answered_at'):
+                    if hasattr(msg['answered_at'], 'isoformat'):
+                        msg['answered_at'] = msg['answered_at'].isoformat()
+            
+            return web.json_response({'messages': messages})
                 
         except Exception as e:
             logger.error(f"Inbox handler error: {e}")
+            logger.error(traceback.format_exc())
             return web.json_response({'messages': []})
     
     async def api_messages_sent_handler(request: web.Request) -> web.Response:
@@ -1194,39 +1281,46 @@ async def main():
                 logger.error("❌ No initData in sent request headers")
                 return web.json_response({'error': 'Unauthorized'}, status=401)
             
-            # Парсим init_data для получения user_id
-            import urllib.parse
-            parsed = urllib.parse.parse_qs(init_data)
-            user_str = parsed.get('user', ['{}'])[0]
+            validated_data = validate_telegram_data(init_data)
+            if not validated_data:
+                logger.error("❌ Invalid signature in sent request")
+                return web.json_response({'error': 'Invalid signature'}, status=403)
             
-            try:
-                user_info = json.loads(user_str)
-                user_id = user_info.get('id')
-                logger.debug(f"📤 Sent request from user {user_id}")
-                
-                messages = await db.get_user_sent(user_id)
-                
-                # Форматируем даты для JSON
-                for msg in messages:
-                    if msg.get('forwarded_at'):
-                        if hasattr(msg['forwarded_at'], 'isoformat'):
-                            msg['forwarded_at'] = msg['forwarded_at'].isoformat()
-                    if msg.get('answered_at'):
-                        if hasattr(msg['answered_at'], 'isoformat'):
-                            msg['answered_at'] = msg['answered_at'].isoformat()
-                
-                return web.json_response({'messages': messages})
-            except Exception as e:
-                logger.error(f"Error parsing sent request: {e}")
-                return web.json_response({'messages': []})
+            user_info = validated_data.get('user', {})
+            user_id = user_info.get('id')
+            
+            if not user_id:
+                return web.json_response({'error': 'User ID not found'}, status=400)
+            
+            logger.debug(f"📤 Sent request from user {user_id}")
+            
+            messages = await db.get_user_sent(user_id)
+            
+            # Форматируем даты для JSON
+            for msg in messages:
+                if msg.get('forwarded_at'):
+                    if hasattr(msg['forwarded_at'], 'isoformat'):
+                        msg['forwarded_at'] = msg['forwarded_at'].isoformat()
+                if msg.get('answered_at'):
+                    if hasattr(msg['answered_at'], 'isoformat'):
+                        msg['answered_at'] = msg['answered_at'].isoformat()
+            
+            return web.json_response({'messages': messages})
                 
         except Exception as e:
             logger.error(f"Sent handler error: {e}")
+            logger.error(traceback.format_exc())
             return web.json_response({'messages': []})
     
     async def health_handler(request: web.Request) -> web.Response:
         logger.debug(f"💓 Health check from {request.remote}")
         return web.Response(text="OK")
+    
+    # Обработка сигналов для graceful shutdown
+    async def shutdown_handler(sig):
+        logger.info(f"📡 Received signal {sig}, starting graceful shutdown...")
+        await bot.shutdown(sig)
+        await asyncio.sleep(1)
     
     # Регистрируем маршруты - ВАЖНО: сначала статические файлы, потом корневой
     app.router.add_get('/{filename:.*\.js$}', static_files_handler)
@@ -1258,6 +1352,12 @@ async def main():
     await site.start()
     
     logger.info(f"🚀 HTTP server started on port {PORT}")
+    
+    # Настраиваем обработку сигналов
+    if sys.platform != 'win32':
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown_handler(s)))
     
     try:
         await bot.run_polling()
