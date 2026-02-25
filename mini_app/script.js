@@ -3,16 +3,18 @@ let userData = null;
 let isLoading = false;
 
 tg.expand();
+tg.setHeaderColor('#232323');
+tg.setBackgroundColor('#232323');
 
 async function init() {
     try {
         console.log('Initializing...');
         
         // Аутентификация
-        const response = await fetch('/api/auth?initData=' + encodeURIComponent(tg.initData));
-        const authResult = await response.json();
+        const authResult = await authenticate();
+        console.log('Auth result:', authResult);
         
-        if (authResult.ok) {
+        if (authResult && authResult.ok) {
             userData = authResult.user;
             
             document.getElementById('userName').textContent = 
@@ -23,91 +25,217 @@ async function init() {
                 document.getElementById('unansweredBadge').classList.remove('hidden');
             }
             
-            await loadMessages();
+            await Promise.all([
+                loadInboxMessages(),
+                loadSentMessages()
+            ]);
+            
             setupTabs();
             setupEventListeners();
         } else {
-            showError('Auth failed');
+            showError('Ошибка авторизации: ' + (authResult?.error || 'Неизвестная ошибка'));
         }
     } catch (error) {
         console.error('Init error:', error);
-        showError('Failed to load');
+        showError('Ошибка загрузки: ' + error.message);
     }
 }
 
-async function loadMessages() {
+async function authenticate() {
+    const initData = tg.initData;
+    
+    if (!initData) {
+        return { ok: false, error: 'Нет данных авторизации' };
+    }
+    
     try {
-        const response = await fetch('/api/messages?initData=' + encodeURIComponent(tg.initData));
-        const data = await response.json();
-        displayMessages(data.messages || []);
+        const response = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ initData })
+        });
+        
+        if (!response.ok) {
+            return { ok: false, error: `HTTP ${response.status}` };
+        }
+        
+        return await response.json();
     } catch (error) {
-        console.error('Load error:', error);
-        displayMessages([]);
+        return { ok: false, error: error.message };
     }
 }
 
-function displayMessages(messages) {
-    const sentContainer = document.getElementById('sentMessages');
-    const inboxContainer = document.getElementById('inboxMessages');
-    
-    const sent = messages.filter(m => !m.is_answered);
-    const answered = messages.filter(m => m.is_answered);
-    
-    // Sent messages
-    if (sent.length === 0) {
-        sentContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><h3>Нет сообщений</h3></div>';
-    } else {
-        let html = '';
-        sent.forEach(m => {
-            html += `
-                <div class="message-card">
-                    <div class="message-header">
-                        <span class="message-id">#${m.id}</span>
-                        <span class="message-time">${new Date(m.created_at).toLocaleString()}</span>
-                    </div>
-                    <div class="message-status status-waiting">Ожидает ответа</div>
-                    <div class="message-text">${escapeHtml(m.message_text)}</div>
-                </div>
-            `;
+async function loadInboxMessages() {
+    try {
+        const response = await fetch('/api/messages/inbox', {
+            headers: { 'X-Telegram-Init-Data': tg.initData }
         });
-        sentContainer.innerHTML = html;
+        
+        if (!response.ok) {
+            console.error('Inbox response not OK:', response.status);
+            displayInboxMessages([]);
+            return;
+        }
+        
+        const data = await response.json();
+        displayInboxMessages(data.messages || []);
+    } catch (error) {
+        console.error('Load inbox error:', error);
+        displayInboxMessages([]);
+    }
+}
+
+async function loadSentMessages() {
+    try {
+        const response = await fetch('/api/messages/sent', {
+            headers: { 'X-Telegram-Init-Data': tg.initData }
+        });
+        
+        if (!response.ok) {
+            console.error('Sent response not OK:', response.status);
+            displaySentMessages([]);
+            return;
+        }
+        
+        const data = await response.json();
+        displaySentMessages(data.messages || []);
+    } catch (error) {
+        console.error('Load sent error:', error);
+        displaySentMessages([]);
+    }
+}
+
+function displayInboxMessages(messages) {
+    const container = document.getElementById('inboxMessages');
+    if (!container) return;
+    
+    if (!messages || messages.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📨</div>
+                <h3>Нет ответов</h3>
+                <p>Когда админ ответит, они появятся здесь</p>
+            </div>
+        `;
+        return;
     }
     
-    // Inbox messages
-    if (answered.length === 0) {
-        inboxContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📨</div><h3>Нет ответов</h3></div>';
-    } else {
-        let html = '';
-        answered.forEach(m => {
-            html += `
-                <div class="message-card">
-                    <div class="message-header">
-                        <span class="message-id">Ответ на #${m.id}</span>
-                        <span class="message-time">${new Date(m.answered_at).toLocaleString()}</span>
+    let html = '';
+    messages.forEach(msg => {
+        const date = msg.answered_at ? new Date(msg.answered_at) : new Date();
+        const timeStr = date.toLocaleString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit'
+        });
+        
+        html += `
+            <div class="message-card">
+                <div class="message-header">
+                    <span class="message-id">Ответ на #${msg.message_id}</span>
+                    <span class="message-time">${timeStr}</span>
+                </div>
+                
+                <div class="answer-badge" style="margin-top: 0;">
+                    <div class="answer-header">Администратор:</div>
+                    <div class="answer-text">
+                        ${escapeHtml(msg.answer_text || 'Ответ получен')}
                     </div>
+                    <div class="answer-meta">
+                        ${msg.answered_by_name || 'Администратор'}
+                    </div>
+                </div>
+                
+                <div style="margin-top: 12px; padding-top: 12px; border-top: var(--border-light);">
+                    <div style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 4px;">
+                        Ваше сообщение:
+                    </div>
+                    <div style="font-size: 14px; color: var(--text-secondary);">
+                        ${escapeHtml(msg.original_text || '')}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function displaySentMessages(messages) {
+    const container = document.getElementById('sentMessages');
+    if (!container) return;
+    
+    if (!messages || messages.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📭</div>
+                <h3>Нет сообщений</h3>
+                <p>Напишите первое сообщение</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    messages.forEach(msg => {
+        const date = msg.forwarded_at ? new Date(msg.forwarded_at) : new Date();
+        const timeStr = date.toLocaleString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit'
+        });
+        
+        const statusClass = msg.is_answered ? 'status-answered' : 'status-waiting';
+        const statusText = msg.is_answered ? 'Отвечено' : 'Ожидает ответа';
+        
+        html += `
+            <div class="message-card">
+                <div class="message-header">
+                    <span class="message-id">#${msg.message_id}</span>
+                    <span class="message-time">${timeStr}</span>
+                </div>
+                
+                <div class="message-status ${statusClass}">
+                    ${statusText}
+                </div>
+                
+                <div class="message-text">
+                    ${escapeHtml(msg.text || '')}
+                </div>
+                
+                ${msg.is_answered ? `
                     <div class="answer-badge">
-                        <div class="answer-header">Администратор:</div>
-                        <div class="answer-text">${escapeHtml(m.answer_text || 'Ответ получен')}</div>
+                        <div class="answer-header">Ответ:</div>
+                        <div class="answer-text">
+                            ${escapeHtml(msg.answer_text || 'Ответ получен')}
+                        </div>
                     </div>
-                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1)">
-                        <div style="font-size:13px;color:rgba(255,255,255,0.5)">Ваше сообщение:</div>
-                        <div style="font-size:14px;color:rgba(255,255,255,0.7)">${escapeHtml(m.message_text)}</div>
-                    </div>
-                </div>
-            `;
-        });
-        inboxContainer.innerHTML = html;
-    }
+                ` : ''}
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
 }
 
 function setupTabs() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabs = document.querySelectorAll('.tab');
+    
+    tabButtons.forEach(btn => {
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const tabId = this.dataset.tab;
+            
+            tabButtons.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.getElementById(this.dataset.tab + '-tab').classList.add('active');
+            tabs.forEach(t => t.classList.remove('active'));
+            document.getElementById(tabId + '-tab').classList.add('active');
         });
     });
 }
@@ -116,13 +244,24 @@ function setupEventListeners() {
     const textarea = document.getElementById('messageText');
     const sendBtn = document.getElementById('sendMessageBtn');
     
-    textarea.addEventListener('input', () => {
-        document.getElementById('charCounter').textContent = textarea.value.length + '/4096';
-        sendBtn.disabled = textarea.value.trim().length === 0 || isLoading;
-        sendBtn.classList.toggle('active', textarea.value.trim().length > 0 && !isLoading);
-    });
+    if (textarea) {
+        textarea.addEventListener('input', () => {
+            const length = textarea.value.length;
+            document.getElementById('charCounter').textContent = length + '/4096';
+            
+            const hasText = textarea.value.trim().length > 0;
+            sendBtn.disabled = !hasText || isLoading;
+            if (hasText && !isLoading) {
+                sendBtn.classList.add('active');
+            } else {
+                sendBtn.classList.remove('active');
+            }
+        });
+    }
     
-    sendBtn.addEventListener('click', sendMessage);
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+    }
 }
 
 async function sendMessage() {
@@ -133,13 +272,21 @@ async function sendMessage() {
     if (!text) return;
     
     isLoading = true;
-    document.getElementById('sendMessageBtn').disabled = true;
+    const sendBtn = document.getElementById('sendMessageBtn');
+    sendBtn.disabled = true;
+    sendBtn.classList.remove('active');
     
     try {
         const response = await fetch('/api/send', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({initData: tg.initData, text})
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                initData: tg.initData,
+                text: text
+            })
         });
         
         const result = await response.json();
@@ -147,23 +294,32 @@ async function sendMessage() {
         if (result.ok) {
             textarea.value = '';
             document.getElementById('charCounter').textContent = '0/4096';
-            await loadMessages();
+            
+            await Promise.all([
+                loadInboxMessages(),
+                loadSentMessages()
+            ]);
             
             if (tg.showPopup) {
                 tg.showPopup({
                     title: 'Успешно',
-                    message: `Сообщение #${result.message_id} отправлено!`
+                    message: `Сообщение #${result.message_id} отправлено!`,
+                    buttons: [{ type: 'ok' }]
                 });
+            } else {
+                alert(`Сообщение #${result.message_id} отправлено!`);
             }
         } else {
-            alert('Error: ' + result.error);
+            alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
         }
     } catch (error) {
-        alert('Send error: ' + error.message);
+        console.error('Send error:', error);
+        alert('Ошибка отправки: ' + error.message);
     } finally {
         isLoading = false;
-        document.getElementById('sendMessageBtn').disabled = true;
-        document.getElementById('sendMessageBtn').classList.remove('active');
+        const hasText = textarea.value.trim().length > 0;
+        sendBtn.disabled = !hasText;
+        if (hasText) sendBtn.classList.add('active');
     }
 }
 
@@ -177,15 +333,20 @@ function escapeHtml(unsafe) {
         .replace(/'/g, "&#039;");
 }
 
-function showError(msg) {
-    document.getElementById('inboxMessages').innerHTML = `
-        <div class="empty-state">
-            <div class="empty-icon">⚠️</div>
-            <h3>Ошибка</h3>
-            <p>${msg}</p>
-            <button onclick="location.reload()">Обновить</button>
-        </div>
-    `;
+function showError(message) {
+    const container = document.getElementById('inboxMessages');
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">⚠️</div>
+                <h3>Ошибка</h3>
+                <p>${message}</p>
+                <button onclick="location.reload()" style="margin-top: 16px; padding: 12px 24px; background: var(--accent-gradient); border: none; border-radius: var(--radius-base); color: var(--text-inverse); font-weight: 600; cursor: pointer;">
+                    Обновить
+                </button>
+            </div>
+        `;
+    }
 }
 
 document.addEventListener('DOMContentLoaded', init);
