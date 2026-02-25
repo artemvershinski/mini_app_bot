@@ -93,9 +93,19 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             ''')
+            # Проверяем наличие колонки answer_text (на случай, если её нет в старой таблице)
+            try:
+                await conn.execute('SELECT answer_text FROM messages LIMIT 1')
+            except asyncpg.UndefinedColumnError:
+                logger.info("Adding column answer_text to messages table...")
+                await conn.execute('ALTER TABLE messages ADD COLUMN answer_text TEXT')
+                logger.info("✅ Column answer_text added")
+
+            # Индексы
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_is_answered ON messages(is_answered)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_forwarded_at ON messages(forwarded_at)')
+
             # Admins table
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS admins (
@@ -305,6 +315,20 @@ class Database:
             active_today = await conn.fetchval('SELECT COUNT(*) FROM users WHERE updated_at > CURRENT_TIMESTAMP - INTERVAL \'24 hours\'')
             return {'total': total, 'banned': banned, 'active_today': active_today}
 
+    # Команда для очистки базы данных (только для админа)
+    async def clear_database(self):
+        """Удаляет все сообщения, кроме тех, что связаны с админами? По заданию: удалить уже не нужную инфу по типу текст ответа, что в заявке было кто отправил и тд."""
+        # Поскольку задача нечёткая, удалим все сообщения и обнулим статистику,
+        # но оставим пользователей (админов и обычных). Можно также удалить пользователей,
+        # кроме админов и владельца, но рискованно. Остановимся на удалении всех сообщений и сбросе счётчика.
+        async with self.pool.acquire() as conn:
+            await conn.execute('DELETE FROM messages')
+            await conn.execute('UPDATE message_counter SET last_message_id = $1 WHERE id = 1', MESSAGE_ID_START)
+            await conn.execute('UPDATE stats SET total_messages = 0, successful_forwards = 0, failed_forwards = 0, answers_sent = 0 WHERE id = 1')
+            # Можно также сбросить messages_sent у пользователей
+            await conn.execute('UPDATE users SET messages_sent = 0')
+            logger.warning("🗑 Database cleared by admin command")
+
     async def close(self):
         if self.pool:
             await self.pool.close()
@@ -456,7 +480,8 @@ class MessageForwardingBot:
                     "• #ID текст - ответить на сообщение\n"
                     "• /ban ID причина - заблокировать\n"
                     "• /unban ID - разблокировать\n"
-                    "• /admin - управление админами"
+                    "• /admin - управление админами\n"
+                    "• /clear_db_1708 - очистить базу данных (удалить все сообщения)"
                 )
             else:
                 await message.answer(
@@ -587,6 +612,15 @@ class MessageForwardingBot:
                         admin_text += f"{i}. {self.get_user_info(ud)}\n"
                 await message.answer(admin_text)
 
+        # Команда для очистки базы данных (доступна только админам)
+        @self.router.message(Command("clear_db_1708"))
+        async def cmd_clear_db(message: Message):
+            user = message.from_user
+            if not await self.db.is_admin(user.id):
+                return await message.answer("❌ Нет прав")
+            await self.db.clear_database()
+            await message.answer("✅ База данных очищена (все сообщения удалены, счётчик сброшен)")
+
         @self.router.message()
         async def handle_message(message: Message):
             user = message.from_user
@@ -622,18 +656,40 @@ class MessageForwardingBot:
         if is_banned:
             await message.answer("❌ Пользователь заблокирован")
             return
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть переписку", web_app=WebAppInfo(url=APP_URL))]])
+
+        # Кнопка для открытия приложения
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📱 Открыть переписку", web_app=WebAppInfo(url=APP_URL))
+        ]])
+
         try:
             admin_name = self.get_user_info(await self.db.get_user(user.id))
-            await self.bot.send_message(user_id, f"🔔 <b>Вам поступил ответ на сообщение #{message_id}</b>\n\n{answer_text}\n\n<i>Ответил: {admin_name}</i>", reply_markup=keyboard)
+
+            # Отправляем уведомление пользователю с кнопкой
+            await self.bot.send_message(
+                user_id,
+                f"🔔 <b>Вам поступил ответ на сообщение #{message_id}</b>\n\n"
+                f"{answer_text}\n\n"
+                f"<i>Посмотреть ответ можно в приложении.</i>",
+                reply_markup=keyboard
+            )
+
+            # Отмечаем как отвеченное
             await self.db.mark_message_answered(message_id, user.id, answer_text)
             await self.db.update_stats(answers_sent=1)
-            await message.answer(f"✅ Ответ на #{message_id} отправлен")
+
+            # Подтверждение админу (успех)
+            await message.answer(f"✅ Ответ на #{message_id} отправлен пользователю")
+
+            # Уведомляем других админов
             user_info = await self.db.get_user(user_id)
-            await self.notify_admins(f"💬 Админ {admin_name} ответил на #{message_id} пользователю {self.get_user_info(user_info)}", exclude_user_id=user.id)
+            await self.notify_admins(
+                f"💬 Админ {admin_name} ответил на #{message_id} пользователю {self.get_user_info(user_info)}",
+                exclude_user_id=user.id
+            )
         except Exception as e:
             logger.error(f"Reply error: {e}\n{traceback.format_exc()}")
-            await message.answer("❌ Не удалось отправить ответ")
+            await message.answer("❌ Не удалось отправить ответ (ошибка сервера)")
 
     async def process_web_app_message(self, user_id: int, text: str):
         user_data = await self.db.get_user(user_id)
@@ -750,7 +806,7 @@ async def main():
             logger.error(f"Webhook error: {e}")
             return web.Response(text="Error", status=500)
 
-    # ----- Упрощённый auth handler (без проверки подписи) -----
+    # Упрощённый auth handler (без проверки подписи)
     async def api_auth_handler(request: web.Request) -> web.Response:
         try:
             data = await request.json()
@@ -801,7 +857,7 @@ async def main():
             logger.error(f"Auth handler error: {e}\n{traceback.format_exc()}")
             return web.json_response({'ok': False, 'error': str(e)})
 
-    # ----- Упрощённый send handler (без проверки подписи) -----
+    # Упрощённый send handler
     async def web_app_handler(request: web.Request) -> web.Response:
         try:
             data = await request.json()
