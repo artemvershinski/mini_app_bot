@@ -5,20 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AV messages</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        /* Базовые переменные – только необходимое */
         :root {
             --bg-primary: #1e1e1e;
             --bg-secondary: #2d2d2d;
             --bg-tertiary: #3a3a3a;
-            --accent: #9b59b6;
-            --accent-light: #b07cc6;
+            --accent: #bb6afd;
+            --accent-light: #d9a5ff;
             --text-primary: #ffffff;
             --text-secondary: #b0b0b0;
             --text-disabled: #5a5a5a;
             --border: #404040;
             --radius: 12px;
             --radius-sm: 8px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         * {
@@ -29,27 +30,133 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Montserrat', sans-serif;
             background: var(--bg-primary);
             color: var(--text-primary);
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
             height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
             display: flex;
-            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .av-container {
+            position: relative;
+            animation: containerScale 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards,
+                       riseUp 1s cubic-bezier(0.4, 0, 0.2, 1) 1.5s forwards;
+        }
+
+        .av-letter {
+            position: relative;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 800;
+            font-size: clamp(100px, 25vw, 200px);
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            display: inline-block;
+            filter: drop-shadow(0 0 15px rgba(187, 106, 253, 0.5));
+            will-change: transform, filter, opacity;
+        }
+
+        .letter-a {
+            animation: letterA 0.8s ease-out forwards;
+            left: -20px;
+            top: -40px;
+        }
+
+        .letter-v {
+            animation: letterV 0.8s ease-out 0.1s forwards;
+            left: 20px;
+            top: 40px;
+        }
+
+        .letter-a::after,
+        .letter-v::after {
+            content: attr(data-letter);
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0.3;
+            filter: blur(4px);
+            transform: translateY(0);
+            z-index: -1;
+            animation: trail 1s ease-in-out 1.5s infinite alternate;
+            pointer-events: none;
+        }
+
+        .letter-a::after {
+            content: 'A';
+            animation-delay: 1.55s;
+        }
+
+        .letter-v::after {
+            content: 'V';
+            animation-delay: 1.6s;
+        }
+
+        @keyframes trail {
+            0% { transform: translateY(5px) scale(0.95); opacity: 0.2; filter: blur(8px); }
+            100% { transform: translateY(-5px) scale(1.05); opacity: 0.4; filter: blur(4px); }
+        }
+
+        @keyframes containerScale {
+            0% { transform: scale(2) translateY(100px); }
+            70% { transform: scale(1.1) translateY(10px); }
+            100% { transform: scale(1) translateY(0); }
+        }
+
+        @keyframes letterA {
+            0% { opacity: 0; left: -20px; top: -40px; }
+            100% { opacity: 1; left: 0; top: 0; }
+        }
+
+        @keyframes letterV {
+            0% { opacity: 0; left: 20px; top: 40px; }
+            100% { opacity: 1; left: 0; top: 0; }
+        }
+
+        @keyframes riseUp {
+            0% { transform: scale(1) translateY(0); opacity: 1; filter: blur(0); }
+            100% { transform: scale(1.8) translateY(-200vh); opacity: 0; filter: blur(10px); }
         }
 
         .app {
-            flex: 1;
+            height: 100vh;
             display: flex;
             flex-direction: column;
             max-width: 480px;
             margin: 0 auto;
             width: 100%;
             background: var(--bg-primary);
+            opacity: 0;
+            transform: translateY(10px);
+            animation: fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) 2.4s forwards;
         }
 
-        /* Табы – минималистичные */
+        @keyframes fadeInUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .tabs {
             display: flex;
             gap: 4px;
@@ -76,7 +183,6 @@
             box-shadow: inset 0 -2px 0 var(--accent);
         }
 
-        /* Контент – скроллируемая область */
         .content {
             flex: 1;
             overflow-y: auto;
@@ -106,7 +212,6 @@
             display: block;
         }
 
-        /* Карточки сообщений */
         .messages-list {
             display: flex;
             flex-direction: column;
@@ -118,6 +223,11 @@
             border-radius: var(--radius-sm);
             padding: 16px;
             border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+
+        .message-card:hover {
+            border-color: var(--accent);
         }
 
         .message-header {
@@ -148,7 +258,7 @@
         }
 
         .status-answered {
-            background: rgba(155, 89, 182, 0.2);
+            background: rgba(187, 106, 253, 0.2);
             color: var(--accent-light);
         }
 
@@ -165,7 +275,7 @@
         }
 
         .answer-badge {
-            background: rgba(155, 89, 182, 0.1);
+            background: rgba(187, 106, 253, 0.1);
             border-left: 3px solid var(--accent);
             padding: 12px;
             border-radius: var(--radius-sm);
@@ -190,7 +300,6 @@
             color: var(--text-secondary);
         }
 
-        /* Поле ввода */
         .message-input-container {
             padding: 16px;
             background: var(--bg-primary);
@@ -260,7 +369,6 @@
             background: var(--accent-light);
         }
 
-        /* Состояния загрузки и пустые */
         .loading {
             text-align: center;
             padding: 40px 20px;
@@ -297,15 +405,20 @@
             display: none !important;
         }
 
-        /* Скрытые элементы, необходимые для скрипта (userName, unansweredBadge) */
         .script-required {
             display: none;
         }
     </style>
 </head>
 <body>
-    <div class="app">
-        <!-- Скрытые элементы, необходимые для работы скрипта (не влияют на отображение) -->
+    <div class="splash-screen" id="splash">
+        <div class="av-container">
+            <span class="av-letter letter-a" data-letter="A">A</span>
+            <span class="av-letter letter-v" data-letter="V">V</span>
+        </div>
+    </div>
+
+    <div class="app" id="app">
         <div class="script-required">
             <span id="userName"></span>
             <span id="unansweredBadge" class="hidden">0</span>
@@ -329,7 +442,7 @@
                 <div class="messages-list" id="sentMessages">
                     <div class="loading">
                         <div class="loading-spinner"></div>
-                        Загрузка...
+                        Connection...
                     </div>
                 </div>
             </div>
@@ -348,10 +461,22 @@
             </div>
             <button class="send-btn" id="sendMessageBtn" disabled>
                 Отправить сообщение
-            </button>
+            </button> 
         </div>
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const splash = document.getElementById('splash');
+            const avContainer = document.querySelector('.av-container');
+            
+            avContainer.addEventListener('animationend', function(e) {
+                if (e.animationName === 'riseUp') {
+                    splash.style.display = 'none';
+                }
+            });
+        });
+    </script>
     <script src="script.js"></script>
 </body>
 </html>
