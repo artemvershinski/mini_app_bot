@@ -11,6 +11,7 @@ from aiohttp import web
 import re
 import json
 import traceback
+import urllib.parse
 
 # Configuration
 OWNER_ID = 989062605
@@ -993,6 +994,37 @@ async def main():
     
     app = web.Application()
     
+    # Раздача статических файлов из папки mini_app
+    async def static_files_handler(request: web.Request) -> web.Response:
+        filename = request.match_info['filename']
+        file_path = os.path.join(os.path.dirname(__file__), 'mini_app', filename)
+        
+        # Проверяем, существует ли файл и не пытаемся ли выйти за пределы папки
+        if '..' in filename or not os.path.exists(file_path):
+            logger.warning(f"❌ Static file not found: {filename}")
+            return web.Response(status=404, text="File not found")
+        
+        # Определяем content-type по расширению
+        content_types = {
+            '.js': 'application/javascript',
+            '.css': 'text/css',
+            '.html': 'text/html',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.svg': 'image/svg+xml'
+        }
+        ext = os.path.splitext(filename)[1]
+        content_type = content_types.get(ext, 'text/plain')
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            logger.info(f"✅ Serving static file: {filename}")
+            return web.Response(text=content, content_type=content_type)
+        except Exception as e:
+            logger.error(f"❌ Error serving static file {filename}: {e}")
+            return web.Response(status=500, text="Internal server error")
+    
     async def root_handler(request: web.Request) -> web.Response:
         logger.info(f"🌐 Root path accessed from {request.remote}")
         html_file_path = os.path.join(os.path.dirname(__file__), 'mini_app', 'index.html')
@@ -1028,19 +1060,17 @@ async def main():
                 logger.error("❌ No initData in webapp request")
                 return web.json_response({'ok': False, 'error': 'No initData'})
             
-            # Здесь нужно распарсить initData, но для простоты используем user_id из запроса
-            user_id = int(data.get('user_id', 0))
-            if not user_id:
-                # Пытаемся получить user_id из init_data (упрощенно)
-                import urllib.parse
-                parsed = urllib.parse.parse_qs(init_data)
-                user_str = parsed.get('user', ['{}'])[0]
-                try:
-                    import json
-                    user_info = json.loads(user_str)
-                    user_id = user_info.get('id')
-                except:
-                    pass
+            # Парсим init_data для получения user_id
+            import urllib.parse
+            parsed = urllib.parse.parse_qs(init_data)
+            user_str = parsed.get('user', ['{}'])[0]
+            
+            try:
+                import json
+                user_info = json.loads(user_str)
+                user_id = user_info.get('id')
+            except:
+                user_id = None
             
             if not user_id:
                 logger.error("❌ Could not determine user_id from webapp request")
@@ -1078,7 +1108,7 @@ async def main():
                 logger.error("❌ No initData in auth request")
                 return web.json_response({'ok': False, 'error': 'No initData'})
             
-            # Парсим init_data для получения user_id (упрощенно)
+            # Парсим init_data для получения user_id
             import urllib.parse
             parsed = urllib.parse.parse_qs(init_data)
             user_str = parsed.get('user', ['{}'])[0]
@@ -1141,8 +1171,16 @@ async def main():
                 logger.debug(f"📥 Inbox request from user {user_id}")
                 
                 messages = await db.get_user_inbox(user_id)
+                
+                # Форматируем даты для JSON
+                for msg in messages:
+                    if msg.get('answered_at'):
+                        if hasattr(msg['answered_at'], 'isoformat'):
+                            msg['answered_at'] = msg['answered_at'].isoformat()
+                
                 return web.json_response({'messages': messages})
-            except:
+            except Exception as e:
+                logger.error(f"Error parsing inbox request: {e}")
                 return web.json_response({'messages': []})
                 
         except Exception as e:
@@ -1167,8 +1205,19 @@ async def main():
                 logger.debug(f"📤 Sent request from user {user_id}")
                 
                 messages = await db.get_user_sent(user_id)
+                
+                # Форматируем даты для JSON
+                for msg in messages:
+                    if msg.get('forwarded_at'):
+                        if hasattr(msg['forwarded_at'], 'isoformat'):
+                            msg['forwarded_at'] = msg['forwarded_at'].isoformat()
+                    if msg.get('answered_at'):
+                        if hasattr(msg['answered_at'], 'isoformat'):
+                            msg['answered_at'] = msg['answered_at'].isoformat()
+                
                 return web.json_response({'messages': messages})
-            except:
+            except Exception as e:
+                logger.error(f"Error parsing sent request: {e}")
                 return web.json_response({'messages': []})
                 
         except Exception as e:
@@ -1179,7 +1228,12 @@ async def main():
         logger.debug(f"💓 Health check from {request.remote}")
         return web.Response(text="OK")
     
-    # Регистрируем маршруты
+    # Регистрируем маршруты - ВАЖНО: сначала статические файлы, потом корневой
+    app.router.add_get('/{filename:.*\.js$}', static_files_handler)
+    app.router.add_get('/{filename:.*\.css$}', static_files_handler)
+    app.router.add_get('/{filename:.*\.png$}', static_files_handler)
+    app.router.add_get('/{filename:.*\.jpg$}', static_files_handler)
+    app.router.add_get('/{filename:.*\.svg$}', static_files_handler)
     app.router.add_get('/', root_handler)
     app.router.add_post('/webhook', webhook_handler)
     app.router.add_post('/api/send', web_app_handler)
@@ -1189,6 +1243,7 @@ async def main():
     app.router.add_get('/health', health_handler)
     
     logger.info("✅ Routes registered:")
+    logger.info("  - GET  /{filename}.js/.css (static files)")
     logger.info("  - GET  /")
     logger.info("  - POST /webhook")
     logger.info("  - POST /api/send")
