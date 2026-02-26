@@ -645,16 +645,14 @@
                 <path d="M12 7v5"/>
             </svg>
         </div>
-        <div class="tos-title">Terms Required</div>
+        <div class="tos-title">ToS & Privacy</div>
         <div class="tos-message">
-            You need to accept the Terms of Service and Privacy Policy before using this app.<br><br>
-            Please return to the chat and click "I Accept Terms".
+            Для использования приложения необходимо принять<br>
+            <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank" style="color: var(--accent-light);">Политику конфиденциальности</a> и 
+            <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" style="color: var(--accent-light);">Условия использования</a>.<br><br>
+            Пожалуйста, вернитесь в чат с ботом и нажмите кнопку "Я принимаю условия".
         </div>
-        <button class="tos-button" id="closeAppBtn">Close App</button>
-        <div class="tos-links">
-            <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank" class="tos-link">Privacy</a>
-            <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" class="tos-link">Terms</a>
-        </div>
+        <button class="tos-button" id="closeAppBtn">Close app</button>
     </div>
 
     <div class="app" id="app">
@@ -791,7 +789,6 @@
                 if (window.Telegram && window.Telegram.WebApp) {
                     window.Telegram.WebApp.close();
                 } else {
-                    // Fallback для браузера
                     window.location.href = 'https://t.me/vrsnsky_bot';
                 }
             });
@@ -829,7 +826,7 @@
                     // ToS принят - показываем приложение
                     document.getElementById('tosWarning').classList.add('hidden');
                     document.getElementById('app').style.display = 'flex';
-                    init(); // Запускаем основную логику
+                    init();
                 } else {
                     // ToS не принят - показываем предупреждение
                     showToSWarning();
@@ -1148,7 +1145,11 @@
                         alert(`Сообщение #${result.message_id} отправлено!`);
                     }
                 } else {
-                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    if (result.error === 'tos_not_accepted') {
+                        showToSWarning();
+                    } else {
+                        alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    }
                 }
             } catch (error) {
                 console.error('Send error:', error);
