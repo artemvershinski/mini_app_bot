@@ -13,7 +13,7 @@
 
 
 <div align="center">
-  <img src="https://user-images.githubusercontent.com/placeholder/preview.gif" width="800" style="border-radius: 20px; box-shadow: 0 20px 40px rgba(187, 106, 253, 0.3);" alt="AV Messages Demo" />
+
   <p><i>✨ AV Messages in action — seamless communication between users and administrators</i></p>
 </div>
 
