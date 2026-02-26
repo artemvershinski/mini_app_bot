@@ -779,7 +779,7 @@
                 if (e.animationName === 'riseUp') {
                     splash.style.display = 'none';
                     
-                    // После анимации проверяем ToS
+                    // Запускаем проверку ToS сразу
                     checkToSAccepted();
                 }
             });
@@ -803,6 +803,12 @@
         tg.setHeaderColor('#232323');
         tg.setBackgroundColor('#232323');
 
+        // Кэш для данных
+        let messagesCache = {
+            inbox: null,
+            sent: null
+        };
+
         async function checkToSAccepted() {
             try {
                 const initData = tg.initData;
@@ -811,26 +817,12 @@
                     return;
                 }
                 
-                const response = await fetch('/api/auth', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ initData })
-                });
+                // Показываем приложение сразу, но с загрузкой
+                document.getElementById('app').style.display = 'flex';
                 
-                const data = await response.json();
+                // Запускаем init без ожидания (параллельно)
+                init();
                 
-                if (data.ok && data.user && data.user.accepted_tos === true) {
-                    // ToS принят - показываем приложение
-                    document.getElementById('tosWarning').classList.add('hidden');
-                    document.getElementById('app').style.display = 'flex';
-                    init();
-                } else {
-                    // ToS не принят - показываем предупреждение
-                    showToSWarning();
-                }
             } catch (error) {
                 console.error('ToS check error:', error);
                 showToSWarning();
@@ -846,11 +838,15 @@
             try {
                 console.log('Initializing...');
                 
-                const authResult = await authenticate();
-                console.log('Auth result:', authResult);
+                // Запускаем все запросы параллельно
+                const [authResult, inboxPromise, sentPromise] = await Promise.allSettled([
+                    authenticate(),
+                    loadInboxMessages(),
+                    loadSentMessages()
+                ]);
                 
-                if (authResult && authResult.ok) {
-                    userData = authResult.user;
+                if (authResult.status === 'fulfilled' && authResult.value?.ok) {
+                    userData = authResult.value.user;
                     
                     document.getElementById('userName').textContent = 
                         userData.first_name || userData.username || 'User';
@@ -860,16 +856,15 @@
                         document.getElementById('unansweredBadge').classList.remove('hidden');
                     }
                     
-                    await Promise.all([
-                        loadInboxMessages(),
-                        loadSentMessages()
-                    ]);
-                    
-                    setupTabs();
-                    setupEventListeners();
-                } else {
-                    showError('Ошибка авторизации: ' + (authResult?.error || 'Неизвестная ошибка'));
+                    // Если пользователь не принял ToS, показываем предупреждение
+                    if (!userData.accepted_tos) {
+                        showToSWarning();
+                    }
                 }
+                
+                setupTabs();
+                setupEventListeners();
+                
             } catch (error) {
                 console.error('Init error:', error);
                 showError('Ошибка загрузки: ' + error.message);
@@ -904,6 +899,12 @@
         }
 
         async function loadInboxMessages() {
+            // Если есть кэш и он не старый (меньше 30 секунд)
+            if (messagesCache.inbox && (Date.now() - messagesCache.inbox.timestamp) < 30000) {
+                displayInboxMessages(messagesCache.inbox.data);
+                return;
+            }
+            
             try {
                 const response = await fetch('/api/messages/inbox', {
                     headers: { 'X-Telegram-Init-Data': tg.initData }
@@ -916,6 +917,10 @@
                 }
                 
                 const data = await response.json();
+                messagesCache.inbox = {
+                    data: data.messages || [],
+                    timestamp: Date.now()
+                };
                 displayInboxMessages(data.messages || []);
             } catch (error) {
                 console.error('Load inbox error:', error);
@@ -924,6 +929,12 @@
         }
 
         async function loadSentMessages() {
+            // Если есть кэш и он не старый (меньше 30 секунд)
+            if (messagesCache.sent && (Date.now() - messagesCache.sent.timestamp) < 30000) {
+                displaySentMessages(messagesCache.sent.data);
+                return;
+            }
+            
             try {
                 const response = await fetch('/api/messages/sent', {
                     headers: { 'X-Telegram-Init-Data': tg.initData }
@@ -936,6 +947,10 @@
                 }
                 
                 const data = await response.json();
+                messagesCache.sent = {
+                    data: data.messages || [],
+                    timestamp: Date.now()
+                };
                 displaySentMessages(data.messages || []);
             } catch (error) {
                 console.error('Load sent error:', error);
@@ -1130,6 +1145,8 @@
                     textarea.value = '';
                     document.getElementById('charCounter').textContent = '0/4096';
                     
+                    // Очищаем кэш и загружаем новые данные
+                    messagesCache = { inbox: null, sent: null };
                     await Promise.all([
                         loadInboxMessages(),
                         loadSentMessages()
@@ -1188,6 +1205,7 @@
             }
         }
 
+        // Скрываем приложение до проверки ToS
         document.getElementById('app').style.display = 'none';
     </script>
 </body>
