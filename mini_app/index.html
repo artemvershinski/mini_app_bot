@@ -707,7 +707,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             const splash = document.getElementById('splash');
             const avContainer = document.querySelector('.av-container');
-            const tosWarning = document.getElementById('tosWarning');
             
             // Аудио контекст
             let audioContext = null;
@@ -779,8 +778,8 @@
                 if (e.animationName === 'riseUp') {
                     splash.style.display = 'none';
                     
-                    // Запускаем проверку ToS сразу
-                    checkToSAccepted();
+                    // Запускаем основную логику
+                    initApp();
                 }
             });
             
@@ -803,68 +802,46 @@
         tg.setHeaderColor('#232323');
         tg.setBackgroundColor('#232323');
 
-        // Кэш для данных
-        let messagesCache = {
-            inbox: null,
-            sent: null
-        };
-
-        async function checkToSAccepted() {
+        async function initApp() {
             try {
-                const initData = tg.initData;
-                if (!initData) {
-                    showToSWarning();
-                    return;
-                }
+                // Сначала проверяем ToS
+                const authResult = await authenticate();
                 
-                // Показываем приложение сразу, но с загрузкой
-                document.getElementById('app').style.display = 'flex';
-                
-                // Запускаем init без ожидания (параллельно)
-                init();
-                
-            } catch (error) {
-                console.error('ToS check error:', error);
-                showToSWarning();
-            }
-        }
-
-        function showToSWarning() {
-            document.getElementById('tosWarning').classList.remove('hidden');
-            document.getElementById('app').style.display = 'none';
-        }
-
-        async function init() {
-            try {
-                console.log('Initializing...');
-                
-                // Запускаем все запросы параллельно
-                const [authResult, inboxPromise, sentPromise] = await Promise.allSettled([
-                    authenticate(),
-                    loadInboxMessages(),
-                    loadSentMessages()
-                ]);
-                
-                if (authResult.status === 'fulfilled' && authResult.value?.ok) {
-                    userData = authResult.value.user;
+                if (authResult && authResult.ok) {
+                    userData = authResult.user;
                     
-                    document.getElementById('userName').textContent = 
-                        userData.first_name || userData.username || 'User';
-                    
-                    if (userData.unanswered > 0) {
-                        document.getElementById('unansweredBadge').textContent = userData.unanswered;
-                        document.getElementById('unansweredBadge').classList.remove('hidden');
+                    // Проверяем приняты ли условия
+                    if (userData.accepted_tos === true) {
+                        // ToS принят - показываем приложение
+                        document.getElementById('tosWarning').classList.add('hidden');
+                        document.getElementById('app').style.display = 'flex';
+                        
+                        // Заполняем данные пользователя
+                        document.getElementById('userName').textContent = 
+                            userData.first_name || userData.username || 'User';
+                        
+                        if (userData.unanswered > 0) {
+                            document.getElementById('unansweredBadge').textContent = userData.unanswered;
+                            document.getElementById('unansweredBadge').classList.remove('hidden');
+                        }
+                        
+                        // Загружаем сообщения (параллельно)
+                        Promise.all([
+                            loadInboxMessages(),
+                            loadSentMessages()
+                        ]).then(() => {
+                            setupTabs();
+                            setupEventListeners();
+                        });
+                        
+                    } else {
+                        // ToS не принят - показываем предупреждение
+                        document.getElementById('tosWarning').classList.remove('hidden');
+                        document.getElementById('app').style.display = 'none';
                     }
-                    
-                    // Если пользователь не принял ToS, показываем предупреждение
-                    if (!userData.accepted_tos) {
-                        showToSWarning();
-                    }
+                } else {
+                    showError('Ошибка авторизации: ' + (authResult?.error || 'Неизвестная ошибка'));
                 }
-                
-                setupTabs();
-                setupEventListeners();
-                
             } catch (error) {
                 console.error('Init error:', error);
                 showError('Ошибка загрузки: ' + error.message);
@@ -899,12 +876,6 @@
         }
 
         async function loadInboxMessages() {
-            // Если есть кэш и он не старый (меньше 30 секунд)
-            if (messagesCache.inbox && (Date.now() - messagesCache.inbox.timestamp) < 30000) {
-                displayInboxMessages(messagesCache.inbox.data);
-                return;
-            }
-            
             try {
                 const response = await fetch('/api/messages/inbox', {
                     headers: { 'X-Telegram-Init-Data': tg.initData }
@@ -917,10 +888,6 @@
                 }
                 
                 const data = await response.json();
-                messagesCache.inbox = {
-                    data: data.messages || [],
-                    timestamp: Date.now()
-                };
                 displayInboxMessages(data.messages || []);
             } catch (error) {
                 console.error('Load inbox error:', error);
@@ -929,12 +896,6 @@
         }
 
         async function loadSentMessages() {
-            // Если есть кэш и он не старый (меньше 30 секунд)
-            if (messagesCache.sent && (Date.now() - messagesCache.sent.timestamp) < 30000) {
-                displaySentMessages(messagesCache.sent.data);
-                return;
-            }
-            
             try {
                 const response = await fetch('/api/messages/sent', {
                     headers: { 'X-Telegram-Init-Data': tg.initData }
@@ -947,10 +908,6 @@
                 }
                 
                 const data = await response.json();
-                messagesCache.sent = {
-                    data: data.messages || [],
-                    timestamp: Date.now()
-                };
                 displaySentMessages(data.messages || []);
             } catch (error) {
                 console.error('Load sent error:', error);
@@ -1145,8 +1102,6 @@
                     textarea.value = '';
                     document.getElementById('charCounter').textContent = '0/4096';
                     
-                    // Очищаем кэш и загружаем новые данные
-                    messagesCache = { inbox: null, sent: null };
                     await Promise.all([
                         loadInboxMessages(),
                         loadSentMessages()
@@ -1162,11 +1117,7 @@
                         alert(`Сообщение #${result.message_id} отправлено!`);
                     }
                 } else {
-                    if (result.error === 'tos_not_accepted') {
-                        showToSWarning();
-                    } else {
-                        alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
-                    }
+                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
                 }
             } catch (error) {
                 console.error('Send error:', error);
@@ -1205,7 +1156,8 @@
             }
         }
 
-        // Скрываем приложение до проверки ToS
+        // Скрываем всё до проверки
+        document.getElementById('tosWarning').classList.add('hidden');
         document.getElementById('app').style.display = 'none';
     </script>
 </body>
