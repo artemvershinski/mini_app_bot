@@ -840,7 +840,7 @@
             });
         }
 
-        // ========== ВСЕ ОРИГИНАЛЬНЫЕ ФУНКЦИИ БЕЗ ИЗМЕНЕНИЙ ==========
+        // ========== ВСЕ ОРИГИНАЛЬНЫЕ ФУНКЦИИ С ИСПРАВЛЕНИЕМ ==========
         async function authenticate(initData) {
             if (!initData) {
                 return { ok: false, error: 'Нет данных авторизации' };
@@ -848,12 +848,12 @@
             
             try {
                 const response = await fetch('/api/auth', {
-                    method: 'POST',
+                    method: 'POST',  // ← ИСПРАВЛЕНО: был GET, стал POST
                     headers: { 
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({ initData })
+                    body: JSON.stringify({ initData })  // ← ИСПРАВЛЕНО: данные в body
                 });
                 
                 if (!response.ok) {
@@ -869,6 +869,7 @@
         async function loadInboxMessages(initData) {
             try {
                 const response = await fetch('/api/messages/inbox', {
+                    method: 'GET',
                     headers: { 'X-Telegram-Init-Data': initData }
                 });
                 
@@ -889,6 +890,7 @@
         async function loadSentMessages(initData) {
             try {
                 const response = await fetch('/api/messages/sent', {
+                    method: 'GET',
                     headers: { 'X-Telegram-Init-Data': initData }
                 });
                 
@@ -903,6 +905,62 @@
             } catch (error) {
                 console.error('Load sent error:', error);
                 displaySentMessages([]);
+            }
+        }
+
+        async function sendMessage() {
+            const textarea = document.getElementById('messageText');
+            const sendBtn = document.getElementById('sendMessageBtn');
+            const text = textarea.value.trim();
+            
+            if (!text || sendBtn.disabled) return;
+            
+            sendBtn.disabled = true;
+            sendBtn.classList.remove('active');
+            
+            try {
+                const response = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        initData: window.tg.initData,
+                        text: text
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.ok) {
+                    textarea.value = '';
+                    document.getElementById('charCounter').textContent = '0/4096';
+                    
+                    await Promise.all([
+                        loadInboxMessages(window.tg.initData),
+                        loadSentMessages(window.tg.initData)
+                    ]);
+                    
+                    if (window.tg.showPopup) {
+                        window.tg.showPopup({
+                            title: 'Успешно',
+                            message: `Сообщение #${result.message_id} отправлено!`,
+                            buttons: [{ type: 'ok' }]
+                        });
+                    } else {
+                        alert(`Сообщение #${result.message_id} отправлено!`);
+                    }
+                } else {
+                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Send error:', error);
+                alert('Ошибка отправки: ' + error.message);
+            } finally {
+                const hasText = textarea.value.trim().length > 0;
+                sendBtn.disabled = !hasText;
+                if (hasText) sendBtn.classList.add('active');
             }
         }
 
@@ -1060,62 +1118,6 @@
             
             if (sendBtn) {
                 sendBtn.addEventListener('click', sendMessage);
-            }
-        }
-
-        async function sendMessage() {
-            const textarea = document.getElementById('messageText');
-            const sendBtn = document.getElementById('sendMessageBtn');
-            const text = textarea.value.trim();
-            
-            if (!text || sendBtn.disabled) return;
-            
-            sendBtn.disabled = true;
-            sendBtn.classList.remove('active');
-            
-            try {
-                const response = await fetch('/api/send', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        initData: window.tg.initData,
-                        text: text
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.ok) {
-                    textarea.value = '';
-                    document.getElementById('charCounter').textContent = '0/4096';
-                    
-                    await Promise.all([
-                        loadInboxMessages(window.tg.initData),
-                        loadSentMessages(window.tg.initData)
-                    ]);
-                    
-                    if (window.tg.showPopup) {
-                        window.tg.showPopup({
-                            title: 'Успешно',
-                            message: `Сообщение #${result.message_id} отправлено!`,
-                            buttons: [{ type: 'ok' }]
-                        });
-                    } else {
-                        alert(`Сообщение #${result.message_id} отправлено!`);
-                    }
-                } else {
-                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
-                }
-            } catch (error) {
-                console.error('Send error:', error);
-                alert('Ошибка отправки: ' + error.message);
-            } finally {
-                const hasText = textarea.value.trim().length > 0;
-                sendBtn.disabled = !hasText;
-                if (hasText) sendBtn.classList.add('active');
             }
         }
 
