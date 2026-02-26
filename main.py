@@ -19,7 +19,7 @@ RATE_LIMIT_MINUTES = 10
 MAX_BAN_HOURS = 720
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-APP_URL = os.getenv("APP_URL", "https://mini-app-bot-lzya.onrender.com")
+APP_URL = os.getenv("APP_URL")
 PORT = int(os.getenv("PORT", 10000))
 MESSAGE_ID_START = 100569
 
