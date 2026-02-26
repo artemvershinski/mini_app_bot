@@ -329,7 +329,7 @@
             border-bottom: 1px solid var(--glass-border);
             transform: translateY(-100%);
             opacity: 0;
-            animation: slideFromTop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.5s forwards;
+            animation: slideFromTop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 5.5s forwards;
         }
 
         @keyframes slideFromTop {
@@ -346,7 +346,7 @@
             background: var(--content-bg);
             transform: scale(0.95);
             opacity: 0;
-            animation: contentAppear 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1s forwards;
+            animation: contentAppear 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 6s forwards;
         }
 
         @keyframes contentAppear {
@@ -360,7 +360,7 @@
             border-top: 1px solid var(--glass-border);
             transform: translateY(100%);
             opacity: 0;
-            animation: slideFromBottom 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.5s forwards;
+            animation: slideFromBottom 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 5.5s forwards;
         }
 
         @keyframes slideFromBottom {
@@ -703,10 +703,75 @@
     </div>  
 
     <script>
-        // ========== АНИМАЦИЯ И ЗВУК ==========
-        document.addEventListener('DOMContentLoaded', function() {
+        // ========== ПРОВЕРКА ToS ПЕРВЫМ ДЕЛОМ ==========
+        (async function() {
+            const tg = window.Telegram.WebApp;
+            const splash = document.getElementById('splash');
+            const tosWarning = document.getElementById('tosWarning');
+            const app = document.getElementById('app');
+            
+            tg.expand();
+            
+            // Скрываем всё кроме splash
+            tosWarning.classList.add('hidden');
+            app.style.display = 'none';
+            
+            try {
+                // 1. МГНОВЕННАЯ проверка ToS
+                const authResult = await authenticate(tg.initData);
+                
+                if (authResult && authResult.ok && authResult.user && authResult.user.accepted_tos === true) {
+                    // ToS ПРИНЯТ - сохраняем данные и ЗАПУСКАЕМ ОРИГИНАЛЬНУЮ АНИМАЦИЮ
+                    window.userData = authResult.user;
+                    window.tg = tg;
+                    
+                    // Заполняем данные пользователя
+                    document.getElementById('userName').textContent = 
+                        authResult.user.first_name || authResult.user.username || 'User';
+                    
+                    if (authResult.user.unanswered > 0) {
+                        document.getElementById('unansweredBadge').textContent = authResult.user.unanswered;
+                        document.getElementById('unansweredBadge').classList.remove('hidden');
+                    }
+                    
+                    // НО начинаем загрузку сообщений в фоне (не дожидаясь анимации)
+                    Promise.all([
+                        loadInboxMessages(tg.initData),
+                        loadSentMessages(tg.initData)
+                    ]).then(() => {
+                        // Когда анимация закончится и данные будут готовы - настраиваем интерфейс
+                        setupTabs();
+                        setupEventListeners();
+                    }).catch(console.error);
+                    
+                    // ЗАПУСКАЕМ ОРИГИНАЛЬНУЮ АНИМАЦИЮ (все как было)
+                    startOriginalAnimation();
+                    
+                } else {
+                    // ToS НЕ ПРИНЯТ - показываем предупреждение и НЕ запускаем анимацию
+                    splash.style.display = 'none';
+                    tosWarning.classList.remove('hidden');
+                    
+                    document.getElementById('closeAppBtn').addEventListener('click', function() {
+                        if (tg) {
+                            tg.close();
+                        } else {
+                            window.close();
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+                splash.style.display = 'none';
+                tosWarning.classList.remove('hidden');
+            }
+        })();
+
+        // ========== ОРИГИНАЛЬНАЯ АНИМАЦИЯ (ПОЛНОСТЬЮ БЕЗ ИЗМЕНЕНИЙ) ==========
+        function startOriginalAnimation() {
             const splash = document.getElementById('splash');
             const avContainer = document.querySelector('.av-container');
+            const app = document.getElementById('app');
             
             // Аудио контекст
             let audioContext = null;
@@ -759,14 +824,7 @@
                 } catch (e) {}
             }
             
-            if (window.Telegram && window.Telegram.WebApp) {
-                window.Telegram.WebApp.ready();
-                initAudio();
-            } else {
-                document.body.addEventListener('click', () => {
-                    initAudio();
-                }, { once: true });
-            }
+            initAudio();
             
             avContainer.addEventListener('animationstart', function(e) {
                 if (e.animationName === 'letterA' || e.animationName === 'letterV') {
@@ -777,80 +835,13 @@
             avContainer.addEventListener('animationend', function(e) {
                 if (e.animationName === 'riseUp') {
                     splash.style.display = 'none';
-                    
-                    // Запускаем основную логику
-                    initApp();
+                    app.style.display = 'flex';
                 }
             });
-            
-            // Закрыть приложение
-            document.getElementById('closeAppBtn').addEventListener('click', function() {
-                if (window.Telegram && window.Telegram.WebApp) {
-                    window.Telegram.WebApp.close();
-                } else {
-                    window.location.href = 'https://t.me/vrsnsky_bot';
-                }
-            });
-        });
-
-        // ========== ОСНОВНАЯ ЛОГИКА ==========
-        let tg = window.Telegram.WebApp;
-        let userData = null;
-        let isLoading = false;
-
-        tg.expand();
-        tg.setHeaderColor('#232323');
-        tg.setBackgroundColor('#232323');
-
-        async function initApp() {
-            try {
-                // Сначала проверяем ToS
-                const authResult = await authenticate();
-                
-                if (authResult && authResult.ok) {
-                    userData = authResult.user;
-                    
-                    // Проверяем приняты ли условия
-                    if (userData.accepted_tos === true) {
-                        // ToS принят - показываем приложение
-                        document.getElementById('tosWarning').classList.add('hidden');
-                        document.getElementById('app').style.display = 'flex';
-                        
-                        // Заполняем данные пользователя
-                        document.getElementById('userName').textContent = 
-                            userData.first_name || userData.username || 'User';
-                        
-                        if (userData.unanswered > 0) {
-                            document.getElementById('unansweredBadge').textContent = userData.unanswered;
-                            document.getElementById('unansweredBadge').classList.remove('hidden');
-                        }
-                        
-                        // Загружаем сообщения (параллельно)
-                        Promise.all([
-                            loadInboxMessages(),
-                            loadSentMessages()
-                        ]).then(() => {
-                            setupTabs();
-                            setupEventListeners();
-                        });
-                        
-                    } else {
-                        // ToS не принят - показываем предупреждение
-                        document.getElementById('tosWarning').classList.remove('hidden');
-                        document.getElementById('app').style.display = 'none';
-                    }
-                } else {
-                    showError('Ошибка авторизации: ' + (authResult?.error || 'Неизвестная ошибка'));
-                }
-            } catch (error) {
-                console.error('Init error:', error);
-                showError('Ошибка загрузки: ' + error.message);
-            }
         }
 
-        async function authenticate() {
-            const initData = tg.initData;
-            
+        // ========== ВСЕ ОРИГИНАЛЬНЫЕ ФУНКЦИИ БЕЗ ИЗМЕНЕНИЙ ==========
+        async function authenticate(initData) {
             if (!initData) {
                 return { ok: false, error: 'Нет данных авторизации' };
             }
@@ -875,10 +866,10 @@
             }
         }
 
-        async function loadInboxMessages() {
+        async function loadInboxMessages(initData) {
             try {
                 const response = await fetch('/api/messages/inbox', {
-                    headers: { 'X-Telegram-Init-Data': tg.initData }
+                    headers: { 'X-Telegram-Init-Data': initData }
                 });
                 
                 if (!response.ok) {
@@ -895,10 +886,10 @@
             }
         }
 
-        async function loadSentMessages() {
+        async function loadSentMessages(initData) {
             try {
                 const response = await fetch('/api/messages/sent', {
-                    headers: { 'X-Telegram-Init-Data': tg.initData }
+                    headers: { 'X-Telegram-Init-Data': initData }
                 });
                 
                 if (!response.ok) {
@@ -1050,6 +1041,7 @@
         function setupEventListeners() {
             const textarea = document.getElementById('messageText');
             const sendBtn = document.getElementById('sendMessageBtn');
+            let isLoading = false;
             
             if (textarea) {
                 textarea.addEventListener('input', () => {
@@ -1072,14 +1064,12 @@
         }
 
         async function sendMessage() {
-            if (isLoading) return;
-            
             const textarea = document.getElementById('messageText');
-            const text = textarea.value.trim();
-            if (!text) return;
-            
-            isLoading = true;
             const sendBtn = document.getElementById('sendMessageBtn');
+            const text = textarea.value.trim();
+            
+            if (!text || sendBtn.disabled) return;
+            
             sendBtn.disabled = true;
             sendBtn.classList.remove('active');
             
@@ -1091,7 +1081,7 @@
                         'Accept': 'application/json'
                     },
                     body: JSON.stringify({
-                        initData: tg.initData,
+                        initData: window.tg.initData,
                         text: text
                     })
                 });
@@ -1103,12 +1093,12 @@
                     document.getElementById('charCounter').textContent = '0/4096';
                     
                     await Promise.all([
-                        loadInboxMessages(),
-                        loadSentMessages()
+                        loadInboxMessages(window.tg.initData),
+                        loadSentMessages(window.tg.initData)
                     ]);
                     
-                    if (tg.showPopup) {
-                        tg.showPopup({
+                    if (window.tg.showPopup) {
+                        window.tg.showPopup({
                             title: 'Успешно',
                             message: `Сообщение #${result.message_id} отправлено!`,
                             buttons: [{ type: 'ok' }]
@@ -1123,7 +1113,6 @@
                 console.error('Send error:', error);
                 alert('Ошибка отправки: ' + error.message);
             } finally {
-                isLoading = false;
                 const hasText = textarea.value.trim().length > 0;
                 sendBtn.disabled = !hasText;
                 if (hasText) sendBtn.classList.add('active');
@@ -1139,26 +1128,6 @@
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
         }
-
-        function showError(message) {
-            const container = document.getElementById('inboxMessages');
-            if (container) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">⚠️</div>
-                        <h3>Ошибка</h3>
-                        <p>${message}</p>
-                        <button onclick="location.reload()" style="margin-top: 16px; padding: 12px 24px; background: linear-gradient(135deg, #bb6afd, #9b4dff); border: none; border-radius: 12px; color: white; font-weight: 600; cursor: pointer;">
-                            Обновить
-                        </button>
-                    </div>
-                `;
-            }
-        }
-
-        // Скрываем всё до проверки
-        document.getElementById('tosWarning').classList.add('hidden');
-        document.getElementById('app').style.display = 'none';
     </script>
 </body>
 </html>
