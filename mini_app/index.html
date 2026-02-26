@@ -224,103 +224,6 @@
             to { opacity: 1; }
         }
 
-        /* ToS Warning Screen */
-        .tos-warning {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--bg-primary);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            padding: 24px;
-            z-index: 1001;
-            text-align: center;
-        }
-
-        .tos-warning.hidden {
-            display: none;
-        }
-
-        .tos-icon {
-            width: 80px;
-            height: 80px;
-            background: rgba(187, 106, 253, 0.1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 24px;
-            border: 2px solid var(--accent);
-            box-shadow: 0 0 30px rgba(187, 106, 253, 0.3);
-        }
-
-        .tos-icon svg {
-            width: 40px;
-            height: 40px;
-            fill: none;
-            stroke: var(--accent-light);
-            stroke-width: 2;
-        }
-
-        .tos-title {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 16px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .tos-message {
-            font-size: 16px;
-            color: var(--text-secondary);
-            margin-bottom: 32px;
-            line-height: 1.6;
-            max-width: 320px;
-        }
-
-        .tos-button {
-            background: linear-gradient(135deg, var(--accent), #9b4dff);
-            border: none;
-            border-radius: 30px;
-            padding: 16px 32px;
-            color: white;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            box-shadow: 0 4px 15px rgba(187, 106, 253, 0.4);
-            width: 100%;
-            max-width: 280px;
-        }
-
-        .tos-button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(187, 106, 253, 0.6);
-        }
-
-        .tos-links {
-            margin-top: 24px;
-            display: flex;
-            gap: 16px;
-            justify-content: center;
-        }
-
-        .tos-link {
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-size: 14px;
-            transition: color 0.2s;
-        }
-
-        .tos-link:hover {
-            color: var(--accent-light);
-        }
-
         .tabs {
             display: flex;
             gap: 8px;
@@ -329,7 +232,7 @@
             border-bottom: 1px solid var(--glass-border);
             transform: translateY(-100%);
             opacity: 0;
-            animation: slideFromTop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.5s forwards;
+            animation: slideFromTop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 5.5s forwards;
         }
 
         @keyframes slideFromTop {
@@ -346,7 +249,7 @@
             background: var(--content-bg);
             transform: scale(0.95);
             opacity: 0;
-            animation: contentAppear 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1s forwards;
+            animation: contentAppear 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 6s forwards;
         }
 
         @keyframes contentAppear {
@@ -360,7 +263,7 @@
             border-top: 1px solid var(--glass-border);
             transform: translateY(100%);
             opacity: 0;
-            animation: slideFromBottom 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.5s forwards;
+            animation: slideFromBottom 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 5.5s forwards;
         }
 
         @keyframes slideFromBottom {
@@ -636,31 +539,7 @@
         </div>
     </div>
 
-    <!-- ToS Warning Screen -->
-    <div class="tos-warning hidden" id="tosWarning">
-        <div class="tos-icon">
-            <svg viewBox="0 0 24 24">
-                <path d="M12 2L2 7v8c0 5 10 7 10 7s10-2 10-7V7l-10-5z"/>
-                <circle cx="12" cy="12" r="2"/>
-                <path d="M12 7v5"/>
-            </svg>
-        </div>
-        <div class="tos-title">ToS & Privacy</div>
-        <div class="tos-message">
-            Для использования приложения необходимо принять<br>
-            <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank" style="color: var(--accent-light);">Политику конфиденциальности</a> и 
-            <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" style="color: var(--accent-light);">Условия использования</a>.<br><br>
-            Вернитесь в чат с ботом и нажмите кнопку "Я принимаю условия".
-        </div>
-        <button class="tos-button" id="closeAppBtn">Close app</button>
-    </div>
-
     <div class="app" id="app">
-        <div class="script-required">
-            <span id="userName"></span>
-            <span id="unansweredBadge" class="hidden">0</span>
-        </div>
-
         <nav class="tabs">
             <button class="tab-btn" data-tab="inbox">Входящие</button>
             <button class="tab-btn active" data-tab="sent">Отправленные</button>
@@ -701,82 +580,17 @@
             </button>  
         </div>
     </div>  
+
     <script>
-        // ========== ПРОВЕРКА ToS ПЕРВЫМ ДЕЛОМ, НО АНИМАЦИЯ ЗАПУСКАЕТСЯ СРАЗУ ==========
-        (async function() {
+        // ========== ИНИЦИАЛИЗАЦИЯ ==========
+        (function() {
             const tg = window.Telegram.WebApp;
             const splash = document.getElementById('splash');
-            const tosWarning = document.getElementById('tosWarning');
             const app = document.getElementById('app');
             
             tg.expand();
             tg.setHeaderColor('#232323');
             tg.setBackgroundColor('#232323');
-            
-            // Скрываем всё кроме splash
-            tosWarning.classList.add('hidden');
-            app.style.display = 'none';
-            
-            // 1. СРАЗУ запускаем анимацию (не ждем проверку!)
-            startOriginalAnimation();
-            
-            // 2. Параллельно проверяем ToS
-            try {
-                const authResult = await authenticate(tg.initData);
-                
-                if (authResult && authResult.ok && authResult.user && authResult.user.accepted_tos === true) {
-                    // ToS ПРИНЯТ - сохраняем данные
-                    window.userData = authResult.user;
-                    window.tg = tg;
-                    
-                    // Заполняем данные пользователя
-                    document.getElementById('userName').textContent = 
-                        authResult.user.first_name || authResult.user.username || 'User';
-                    
-                    if (authResult.user.unanswered > 0) {
-                        document.getElementById('unansweredBadge').textContent = authResult.user.unanswered;
-                        document.getElementById('unansweredBadge').classList.remove('hidden');
-                    }
-                    
-                    // Грузим сообщения в фоне
-                    Promise.all([
-                        loadInboxMessages(tg.initData).catch(() => []),
-                        loadSentMessages(tg.initData).catch(() => [])
-                    ]).then(() => {
-                        setupTabs();
-                        setupEventListeners();
-                    }).catch(console.error);
-                    
-                } else {
-                    // ToS НЕ ПРИНЯТ - показываем предупреждение ПОСЛЕ анимации
-                    setTimeout(() => {
-                        splash.style.display = 'none';
-                        tosWarning.classList.remove('hidden');
-                    }, 4500); // Ждем окончания анимации (почти 4.5 сек)
-                    
-                    document.getElementById('closeAppBtn').addEventListener('click', function() {
-                        if (tg) {
-                            tg.close();
-                        } else {
-                            window.close();
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('Auth check error:', error);
-                // В случае ошибки - все равно показываем интерфейс
-                setTimeout(() => {
-                    splash.style.display = 'none';
-                    app.style.display = 'flex';
-                }, 4500);
-            }
-        })();
-
-        // ========== ОРИГИНАЛЬНАЯ АНИМАЦИЯ (ПОЛНОСТЬЮ БЕЗ ИЗМЕНЕНИЙ) ==========
-        function startOriginalAnimation() {
-            const splash = document.getElementById('splash');
-            const avContainer = document.querySelector('.av-container');
-            const app = document.getElementById('app');
             
             // Аудио контекст
             let audioContext = null;
@@ -831,11 +645,11 @@
             
             initAudio();
             
-            // Добавляем обработчик клика для аудио (для мобильных)
-            document.body.addEventListener('click', function initAudioOnClick() {
+            document.body.addEventListener('click', () => {
                 initAudio();
-                document.body.removeEventListener('click', initAudioOnClick);
             }, { once: true });
+            
+            const avContainer = document.querySelector('.av-container');
             
             avContainer.addEventListener('animationstart', function(e) {
                 if (e.animationName === 'letterA' || e.animationName === 'letterV') {
@@ -849,34 +663,19 @@
                     app.style.display = 'flex';
                 }
             });
-        }
+            
+            // Загружаем данные
+            window.tg = tg;
+            Promise.all([
+                loadInboxMessages(tg.initData),
+                loadSentMessages(tg.initData)
+            ]).then(() => {
+                setupTabs();
+                setupEventListeners();
+            }).catch(console.error);
+        })();
 
         // ========== ФУНКЦИИ ДЛЯ РАБОТЫ С API ==========
-        async function authenticate(initData) {
-            if (!initData) {
-                return { ok: false, error: 'Нет данных авторизации' };
-            }
-            
-            try {
-                const response = await fetch('/api/auth', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ initData })
-                });
-                
-                if (!response.ok) {
-                    return { ok: false, error: `HTTP ${response.status}` };
-                }
-                
-                return await response.json();
-            } catch (error) {
-                return { ok: false, error: error.message };
-            }
-        }
-
         async function loadInboxMessages(initData) {
             try {
                 const response = await fetch('/api/messages/inbox', {
@@ -917,59 +716,6 @@
             }
         }
 
-        async function sendMessage() {
-            const textarea = document.getElementById('messageText');
-            const sendBtn = document.getElementById('sendMessageBtn');
-            const text = textarea.value.trim();
-            
-            if (!text || sendBtn.disabled) return;
-            
-            sendBtn.disabled = true;
-            sendBtn.classList.remove('active');
-            
-            try {
-                const response = await fetch('/api/send', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        initData: window.tg.initData,
-                        text: text
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.ok) {
-                    textarea.value = '';
-                    document.getElementById('charCounter').textContent = '0/4096';
-                    
-                    await Promise.all([
-                        loadInboxMessages(window.tg.initData),
-                        loadSentMessages(window.tg.initData)
-                    ]);
-                    
-                    if (window.tg.showPopup) {
-                        window.tg.showPopup({
-                            title: 'Успешно',
-                            message: `Сообщение #${result.message_id} отправлено!`,
-                            buttons: [{ type: 'ok' }]
-                        });
-                    }
-                } else {
-                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
-                }
-            } catch (error) {
-                console.error('Send error:', error);
-                alert('Ошибка отправки: ' + error.message);
-            } finally {
-                const hasText = textarea.value.trim().length > 0;
-                sendBtn.disabled = !hasText;
-                if (hasText) sendBtn.classList.add('active');
-            }
-        }
         function displayInboxMessages(messages) {
             const container = document.getElementById('inboxMessages');
             if (!container) return;
@@ -977,7 +723,7 @@
             if (!messages || messages.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-icon">:(</div>
+                        <div class="empty-icon">📨</div>
                         <h3>Нет ответов</h3>
                         <p>Когда админ ответит, они появятся здесь</p>
                     </div>
@@ -1034,7 +780,7 @@
             if (!messages || messages.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-icon">:(</div>
+                        <div class="empty-icon">📭</div>
                         <h3>Нет сообщений</h3>
                         <p>Напишите первое сообщение</p>
                     </div>
@@ -1085,7 +831,6 @@
             container.innerHTML = html;
         }
 
-        // ========== НАСТРОЙКА ИНТЕРФЕЙСА ==========
         function setupTabs() {
             const tabButtons = document.querySelectorAll('.tab-btn');
             const tabs = document.querySelectorAll('.tab');
@@ -1125,6 +870,60 @@
             
             if (sendBtn) {
                 sendBtn.addEventListener('click', sendMessage);
+            }
+        }
+
+        async function sendMessage() {
+            const textarea = document.getElementById('messageText');
+            const sendBtn = document.getElementById('sendMessageBtn');
+            const text = textarea.value.trim();
+            
+            if (!text || sendBtn.disabled) return;
+            
+            sendBtn.disabled = true;
+            sendBtn.classList.remove('active');
+            
+            try {
+                const response = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        initData: window.tg.initData,
+                        text: text
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.ok) {
+                    textarea.value = '';
+                    document.getElementById('charCounter').textContent = '0/4096';
+                    
+                    await Promise.all([
+                        loadInboxMessages(window.tg.initData),
+                        loadSentMessages(window.tg.initData)
+                    ]);
+                    
+                    if (window.tg.showPopup) {
+                        window.tg.showPopup({
+                            title: 'Успешно',
+                            message: `Сообщение #${result.message_id} отправлено!`,
+                            buttons: [{ type: 'ok' }]
+                        });
+                    }
+                } else {
+                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Send error:', error);
+                alert('Ошибка отправки: ' + error.message);
+            } finally {
+                const hasText = textarea.value.trim().length > 0;
+                sendBtn.disabled = !hasText;
+                if (hasText) sendBtn.classList.add('active');
             }
         }
 
