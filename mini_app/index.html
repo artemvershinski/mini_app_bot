@@ -224,6 +224,103 @@
             to { opacity: 1; }
         }
 
+        /* ToS Warning Screen */
+        .tos-warning {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+            z-index: 1001;
+            text-align: center;
+        }
+
+        .tos-warning.hidden {
+            display: none;
+        }
+
+        .tos-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(187, 106, 253, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            border: 2px solid var(--accent);
+            box-shadow: 0 0 30px rgba(187, 106, 253, 0.3);
+        }
+
+        .tos-icon svg {
+            width: 40px;
+            height: 40px;
+            fill: none;
+            stroke: var(--accent-light);
+            stroke-width: 2;
+        }
+
+        .tos-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .tos-message {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+            line-height: 1.6;
+            max-width: 320px;
+        }
+
+        .tos-button {
+            background: linear-gradient(135deg, var(--accent), #9b4dff);
+            border: none;
+            border-radius: 30px;
+            padding: 16px 32px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: 0 4px 15px rgba(187, 106, 253, 0.4);
+            width: 100%;
+            max-width: 280px;
+        }
+
+        .tos-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(187, 106, 253, 0.6);
+        }
+
+        .tos-links {
+            margin-top: 24px;
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .tos-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+
+        .tos-link:hover {
+            color: var(--accent-light);
+        }
+
         .tabs {
             display: flex;
             gap: 8px;
@@ -539,6 +636,27 @@
         </div>
     </div>
 
+    <!-- ToS Warning Screen -->
+    <div class="tos-warning hidden" id="tosWarning">
+        <div class="tos-icon">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 2L2 7v8c0 5 10 7 10 7s10-2 10-7V7l-10-5z"/>
+                <circle cx="12" cy="12" r="2"/>
+                <path d="M12 7v5"/>
+            </svg>
+        </div>
+        <div class="tos-title">Terms Required</div>
+        <div class="tos-message">
+            You need to accept the Terms of Service and Privacy Policy before using this app.<br><br>
+            Please return to the chat and click "I Accept Terms".
+        </div>
+        <button class="tos-button" id="closeAppBtn">Close App</button>
+        <div class="tos-links">
+            <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank" class="tos-link">Privacy</a>
+            <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" class="tos-link">Terms</a>
+        </div>
+    </div>
+
     <div class="app" id="app">
         <div class="script-required">
             <span id="userName"></span>
@@ -591,6 +709,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             const splash = document.getElementById('splash');
             const avContainer = document.querySelector('.av-container');
+            const tosWarning = document.getElementById('tosWarning');
             
             // Аудио контекст
             let audioContext = null;
@@ -661,11 +780,24 @@
             avContainer.addEventListener('animationend', function(e) {
                 if (e.animationName === 'riseUp') {
                     splash.style.display = 'none';
+                    
+                    // После анимации проверяем ToS
+                    checkToSAccepted();
+                }
+            });
+            
+            // Закрыть приложение
+            document.getElementById('closeAppBtn').addEventListener('click', function() {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    window.Telegram.WebApp.close();
+                } else {
+                    // Fallback для браузера
+                    window.location.href = 'https://t.me/vrsnsky_bot';
                 }
             });
         });
 
-        // ========== ОСНОВНАЯ ЛОГИКА (ТВОЙ SCRIPT.JS) ==========
+        // ========== ОСНОВНАЯ ЛОГИКА ==========
         let tg = window.Telegram.WebApp;
         let userData = null;
         let isLoading = false;
@@ -673,6 +805,45 @@
         tg.expand();
         tg.setHeaderColor('#232323');
         tg.setBackgroundColor('#232323');
+
+        async function checkToSAccepted() {
+            try {
+                const initData = tg.initData;
+                if (!initData) {
+                    showToSWarning();
+                    return;
+                }
+                
+                const response = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ initData })
+                });
+                
+                const data = await response.json();
+                
+                if (data.ok && data.user && data.user.accepted_tos === true) {
+                    // ToS принят - показываем приложение
+                    document.getElementById('tosWarning').classList.add('hidden');
+                    document.getElementById('app').style.display = 'flex';
+                    init(); // Запускаем основную логику
+                } else {
+                    // ToS не принят - показываем предупреждение
+                    showToSWarning();
+                }
+            } catch (error) {
+                console.error('ToS check error:', error);
+                showToSWarning();
+            }
+        }
+
+        function showToSWarning() {
+            document.getElementById('tosWarning').classList.remove('hidden');
+            document.getElementById('app').style.display = 'none';
+        }
 
         async function init() {
             try {
@@ -1016,7 +1187,7 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', init);
+        document.getElementById('app').style.display = 'none';
     </script>
 </body>
 </html>
