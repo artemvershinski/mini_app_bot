@@ -21,19 +21,6 @@
 
 ---
 
-## 📋 **Оглавление**
-- [✨ О проекте](#-о-проекте)
-- [🏗 Архитектура](#-архитектура)
-- [📸 Скриншоты](#-скриншоты)
-- [⚡ Быстрый старт](#-быстрый-старт)
-- [🔧 Конфигурация](#-конфигурация)
-- [📊 Масштабирование](#-масштабирование)
-- [🔐 Безопасность](#-безопасность)
-- [📈 Мониторинг](#-мониторинг)
-- [🤝 Контрибьюция](#-контрибьюция)
-- [📄 Лицензия](#-лицензия)
-
----
 
 ## ✨ **О проекте**
 
@@ -112,24 +99,6 @@ graph TB
 | **Frontend** | HTML5/CSS3/JS | - | Пользовательский интерфейс |
 | **Deployment** | Render.com | - | Хостинг |
 
----
-
-## 📸 **Скриншоты**
-
-<div align="center">
-  <table>
-    <tr>
-      <td><img src="https://via.placeholder.com/400x800/1e1e1e/bb6afd?text=Loading+Screen" width="250" style="border-radius: 20px;"/></td>
-      <td><img src="https://via.placeholder.com/400x800/1e1e1e/bb6afd?text=Main+Interface" width="250" style="border-radius: 20px;"/></td>
-      <td><img src="https://via.placeholder.com/400x800/1e1e1e/bb6afd?text=Admin+Panel" width="250" style="border-radius: 20px;"/></td>
-    </tr>
-    <tr>
-      <td align="center"><b>🎬 Анимация входа</b></td>
-      <td align="center"><b>💬 Чат с админом</b></td>
-      <td align="center"><b>👑 Панель администратора</b></td>
-    </tr>
-  </table>
-</div>
 
 ---
 
@@ -298,20 +267,19 @@ async def show_stats(message: Message):
   <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=150&section=footer&text=AV%20Messages%20%E2%9D%A4%EF%B8%8F&fontSize=40&fontAlignY=70" width="100%" />
   
   <p>
-    <a href="https://t.me/yourchannel">
+    <a href="https://t.me/vrsnsky_bot">
       <img src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" />
     </a>
-    <a href="https://github.com/yourusername/av-messages">
+    <a href="https://github.com/artemvershinski/mini_app_bot">
       <img src="https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white" />
     </a>
-    <a href="https://your-app.onrender.com">
+    <a href="https://mini-app-bot-lzya.onrender.com">
       <img src="https://img.shields.io/badge/Demo-4285F4?style=for-the-badge&logo=google-chrome&logoColor=white" />
     </a>
   </p>
   
   <p>
-    <sub>Built with ❤️ by <a href="https://github.com/yourusername">Your Name</a></sub>
+    <sub>Built with ❤️ by <a href="https://github.com/artemvershinski">Artem V.</a></sub>
   </p>
   
-  <img src="https://profile-counter.glitch.me/av-messages/count.svg" />
 </div>
