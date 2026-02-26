@@ -70,7 +70,7 @@
             background: radial-gradient(circle at 20% 30%, 
                         rgba(219, 181, 255, 0.492) 3%,  
                         rgba(187, 106, 253, 0.35) 25%, 
-                        rgba(255, 183, 60, 0.35) 50%,
+                        rgba(255, 183, 60, 0.35) 45%,
                         transparent 80%);
             pointer-events: none;
             z-index: 1;
@@ -108,17 +108,14 @@
             100% { 
                 opacity: 0;
                 transform: scale(4);
-                filter: blur(25px);
+                filter: blur(25px); 
             }
         }
         .av-container { 
             animation: containerScale 1.2s cubic-bezier(0.4, 0, 0.2, 1) 1.5s forwards,
                 promise 1.6s 2.7s forwards,
-                riseUp 1.5s cubic-bezier(0.4, 0, 0.2, 1) 4s forwards;  
+                riseUp 1.5s cubic-bezier(0.4, 0, 0.2, 1) 4s forwards;
         }
-        
-
-
         .av-letter { 
             opacity: 0;
             position: relative;
@@ -510,7 +507,7 @@
 
         @keyframes spin {
             to { transform: rotate(360deg); }
-        }
+        } 
 
         .empty-state {
             text-align: center;
@@ -591,8 +588,184 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const splash = document.getElementById('splash'); 
+            const splash = document.getElementById('splash');
             const avContainer = document.querySelector('.av-container');
+            
+            // Аудио контекст
+            let audioContext = null;
+            let soundsPlayed = {
+                appearance: false,
+                rise: false
+            };
+            let audioInitialized = false;
+            let isTelegram = window.Telegram && window.Telegram.WebApp;
+            
+            // Инициализация аудио контекста
+            function initAudio() {
+                if (audioContext) return;
+                
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    console.log('Audio context created, state:', audioContext.state);
+                    
+                    // Пробуем запустить
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume().then(() => {
+                            console.log('Audio context resumed');
+                            audioInitialized = true;
+                        }).catch(() => {
+                            console.log('Could not resume automatically');
+                        });
+                    } else {
+                        audioInitialized = true;
+                    }
+                } catch (e) {
+                    console.log('Web Audio API not supported:', e);
+                }
+            }
+            
+            // Звук появления
+            function playAppearanceSound() {
+                if (!audioContext || soundsPlayed.appearance) return;
+                
+                // Если контекст не активен - пробуем активировать
+                if (audioContext.state !== 'running') {
+                    audioContext.resume().then(() => {
+                        actuallyPlayAppearance();
+                    }).catch(() => {});
+                    return;
+                }
+                
+                actuallyPlayAppearance();
+            }
+            
+            function actuallyPlayAppearance() {
+                if (soundsPlayed.appearance) return;
+                soundsPlayed.appearance = true;
+                
+                try {
+                    // Основной гул
+                    const osc1 = audioContext.createOscillator();
+                    const gain1 = audioContext.createGain();
+                    osc1.type = 'sine';
+                    osc1.frequency.setValueAtTime(100, audioContext.currentTime);
+                    osc1.frequency.exponentialRampToValueAtTime(220, audioContext.currentTime + 0.4);
+                    gain1.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                    osc1.connect(gain1);
+                    gain1.connect(audioContext.destination);
+                    osc1.start();
+                    osc1.stop(audioContext.currentTime + 0.5);
+                    
+                    // Короткий щелчок
+                    const osc2 = audioContext.createOscillator();
+                    const gain2 = audioContext.createGain();
+                    osc2.type = 'square';
+                    osc2.frequency.setValueAtTime(80, audioContext.currentTime + 0.1);
+                    gain2.gain.setValueAtTime(0.1, audioContext.currentTime + 0.1);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.15);
+                    osc2.connect(gain2);
+                    gain2.connect(audioContext.destination);
+                    osc2.start(audioContext.currentTime + 0.1);
+                    osc2.stop(audioContext.currentTime + 0.2);
+                    
+                    console.log('Appearance sound played');
+                } catch (e) {
+                    console.log('Error playing appearance sound:', e);
+                }
+            }
+            
+            // Звук взлета
+            function playRiseSound() {
+                if (!audioContext || soundsPlayed.rise) return;
+                
+                if (audioContext.state !== 'running') {
+                    audioContext.resume().then(() => {
+                        actuallyPlayRise();
+                    }).catch(() => {});
+                    return;
+                }
+                
+                actuallyPlayRise();
+            }
+            
+            function actuallyPlayRise() {
+                if (soundsPlayed.rise) return;
+                soundsPlayed.rise = true;
+                
+                try {
+                    // Низкий гул
+                    const osc1 = audioContext.createOscillator();
+                    const gain1 = audioContext.createGain();
+                    osc1.type = 'triangle';
+                    osc1.frequency.setValueAtTime(80, audioContext.currentTime);
+                    osc1.frequency.exponentialRampToValueAtTime(40, audioContext.currentTime + 1.2);
+                    gain1.gain.setValueAtTime(0.25, audioContext.currentTime);
+                    gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1.3);
+                    osc1.connect(gain1);
+                    gain1.connect(audioContext.destination);
+                    osc1.start();
+                    osc1.stop(audioContext.currentTime + 1.3);
+                    
+                    // Второй слой
+                    const osc2 = audioContext.createOscillator();
+                    const gain2 = audioContext.createGain();
+                    osc2.type = 'sine';
+                    osc2.frequency.setValueAtTime(120, audioContext.currentTime);
+                    osc2.frequency.exponentialRampToValueAtTime(60, audioContext.currentTime + 1.2);
+                    gain2.gain.setValueAtTime(0.15, audioContext.currentTime);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.3);
+                    osc2.connect(gain2);
+                    gain2.connect(audioContext.destination);
+                    osc2.start();
+                    osc2.stop(audioContext.currentTime + 1.3);
+                    
+                    // Финальный "вуууш"
+                    const osc3 = audioContext.createOscillator();
+                    const gain3 = audioContext.createGain();
+                    osc3.type = 'sine';
+                    osc3.frequency.setValueAtTime(200, audioContext.currentTime + 0.8);
+                    osc3.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 1.2);
+                    gain3.gain.setValueAtTime(0.08, audioContext.currentTime + 0.8);
+                    gain3.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.2);
+                    osc3.connect(gain3);
+                    gain3.connect(audioContext.destination);
+                    osc3.start(audioContext.currentTime + 0.8);
+                    osc3.stop(audioContext.currentTime + 1.2);
+                    
+                    console.log('Rise sound played');
+                } catch (e) {
+                    console.log('Error playing rise sound:', e);
+                }
+            }
+            
+            // Логика инициализации
+            if (isTelegram) {
+                console.log('Telegram mode: auto-init');
+                window.Telegram.WebApp.ready();
+                initAudio();
+            } else {
+                console.log('Browser mode: wait for click');
+                // В браузере ждем клик
+                document.body.addEventListener('click', function initOnClick() {
+                    initAudio();
+                    // Пробуем сразу запустить контекст
+                    if (audioContext && audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                }, { once: true });
+            }
+            
+            // Слушаем анимации
+            avContainer.addEventListener('animationstart', function(e) {
+                if (e.animationName === 'letterA' || e.animationName === 'letterV') {
+                    playAppearanceSound();
+                }
+                  
+                if (e.animationName === 'riseUp') {
+                    playRiseSound();
+                }
+            });
             
             avContainer.addEventListener('animationend', function(e) {
                 if (e.animationName === 'riseUp') {
@@ -601,6 +774,5 @@
             });
         });
     </script>
-    <script src="script.js"></script>
 </body>
 </html>
