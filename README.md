@@ -10,9 +10,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" />
 </p>
 
-<p align="center">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=28&duration=3000&pause=1000&color=BB6AFD&center=true&vCenter=true&width=600&lines=⚡+Enterprise+ready;📱+Telegram+Mini+App;🚀+High+Performance;🔒+Secure+by+default" alt="Typing SVG" />
-</p>
+
 
 <div align="center">
   <img src="https://user-images.githubusercontent.com/placeholder/preview.gif" width="800" style="border-radius: 20px; box-shadow: 0 20px 40px rgba(187, 106, 253, 0.3);" alt="AV Messages Demo" />
