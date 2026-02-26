@@ -19,7 +19,7 @@ RATE_LIMIT_MINUTES = 10
 MAX_BAN_HOURS = 720
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-APP_URL = os.getenv("APP_URL")
+APP_URL = os.getenv("APP_URL", "https://mini-app-bot-lzya.onrender.com")
 PORT = int(os.getenv("PORT", 10000))
 MESSAGE_ID_START = 100569
 
@@ -39,7 +39,7 @@ def log_user_action(action: str, user_id: int, user_data: dict = None, extra: st
         return
     username = user_data.get('username', 'NoUsername') if user_data else 'Unknown'
     first_name = user_data.get('first_name', 'NoName') if user_data else 'Unknown'
-    log_msg = f"👤 USER ACTION [{action}] | ID: {user_id} | @{username} | {first_name}"
+    log_msg = f"USER ACTION [{action}] | ID: {user_id} | @{username} | {first_name}"
     if extra:
         log_msg += f" | {extra}"
     logger.info(log_msg)
@@ -51,14 +51,14 @@ class Database:
         self.pool = None
         self.admin_cache = []
         self.admin_cache_time = 0
-        self.delete_confirmations = {}  # user_id -> {'code': str, 'message_id': int, 'expires': datetime}
-        self.remove_data_confirmations = {}  # Для подтверждения /remove_data
+        self.delete_confirmations = {}
+        self.remove_data_confirmations = {}
 
     async def create_pool(self):
-        logger.info("🔄 Connecting to PostgreSQL...")
+        logger.info("Connecting to PostgreSQL...")
         self.pool = await asyncpg.create_pool(self.dsn, min_size=10, max_size=20)
         await self.init_db()
-        logger.info("✅ PostgreSQL connection established")
+        logger.info("PostgreSQL connection established")
 
     async def init_db(self):
         async with self.pool.acquire() as conn:
@@ -80,15 +80,15 @@ class Database:
                 )
             ''')
             
-            # Проверяем и добавляем колонку accepted_tos, если её нет
+            # Check and add accepted_tos column
             try:
                 await conn.execute('SELECT accepted_tos FROM users LIMIT 1')
             except asyncpg.UndefinedColumnError:
                 logger.info("Adding column accepted_tos to users table...")
                 await conn.execute('ALTER TABLE users ADD COLUMN accepted_tos BOOLEAN DEFAULT FALSE')
-                logger.info("✅ Column accepted_tos added")
+                logger.info("Column accepted_tos added")
             
-            # Messages table with indexes
+            # Messages table
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS messages (
                     message_id INTEGER PRIMARY KEY,
@@ -105,13 +105,14 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             ''')
-            # Check if column answer_text exists (for old tables)
+            
+            # Check answer_text column
             try:
                 await conn.execute('SELECT answer_text FROM messages LIMIT 1')
             except asyncpg.UndefinedColumnError:
                 logger.info("Adding column answer_text to messages table...")
                 await conn.execute('ALTER TABLE messages ADD COLUMN answer_text TEXT')
-                logger.info("✅ Column answer_text added")
+                logger.info("Column answer_text added")
 
             # Indexes
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)')
@@ -128,6 +129,7 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             ''')
+            
             # Stats table
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS stats (
@@ -141,6 +143,7 @@ class Database:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
             # Message counter
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS message_counter (
@@ -152,16 +155,19 @@ class Database:
                 INSERT INTO message_counter (id, last_message_id) 
                 VALUES (1, $1) ON CONFLICT (id) DO NOTHING
             ''', MESSAGE_ID_START)
+            
             # Owner user
             await conn.execute('''
                 INSERT INTO users (user_id, username, first_name, accepted_tos) 
                 VALUES ($1, 'owner', 'Owner', TRUE)
                 ON CONFLICT (user_id) DO UPDATE SET username='owner', first_name='Owner', accepted_tos = TRUE
             ''', OWNER_ID)
+            
             # Owner as admin
             await conn.execute('''
                 INSERT INTO admins (user_id, added_by) VALUES ($1, $1) ON CONFLICT DO NOTHING
             ''', OWNER_ID)
+            
             # Initial stats
             await conn.execute('''
                 INSERT INTO stats (id, total_messages, successful_forwards, failed_forwards, bans_issued, rate_limit_blocks, answers_sent)
@@ -169,13 +175,11 @@ class Database:
             ''')
 
     async def accept_tos(self, user_id: int) -> bool:
-        """Отмечает, что пользователь принял условия."""
         async with self.pool.acquire() as conn:
             result = await conn.execute('UPDATE users SET accepted_tos = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1', user_id)
             return result.split()[1] == '1'
 
     async def has_accepted_tos(self, user_id: int) -> bool:
-        """Проверяет, принял ли пользователь условия."""
         async with self.pool.acquire() as conn:
             accepted = await conn.fetchval('SELECT accepted_tos FROM users WHERE user_id = $1', user_id)
             return accepted is True
@@ -201,7 +205,6 @@ class Database:
             return dict(row) if row else None
 
     async def get_message_with_details(self, message_id: int) -> Optional[Dict]:
-        """Get message with user info and answering admin name."""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow('''
                 SELECT m.*, 
@@ -215,54 +218,36 @@ class Database:
             return dict(row) if row else None
 
     async def delete_message(self, message_id: int) -> bool:
-        """Delete a message by ID."""
         async with self.pool.acquire() as conn:
-            # Проверяем существование
             exists = await conn.fetchval('SELECT EXISTS(SELECT 1 FROM messages WHERE message_id = $1)', message_id)
             if not exists:
                 return False
-            
-            # Удаляем и проверяем количество удаленных строк
             result = await conn.execute('DELETE FROM messages WHERE message_id = $1', message_id)
-            # result выглядит как "DELETE 1" если удалено 1 сообщение
             return result.split()[1] == '1'
 
     async def delete_all_user_data(self, user_id: int) -> bool:
-        """Полностью удаляет все данные пользователя (сообщения и самого пользователя)."""
         async with self.pool.acquire() as conn:
-            # Сначала удаляем все сообщения пользователя (каскадно удалится)
             await conn.execute('DELETE FROM messages WHERE user_id = $1', user_id)
-            # Затем удаляем самого пользователя
             result = await conn.execute('DELETE FROM users WHERE user_id = $1', user_id)
             return result.split()[1] == '1'
 
     async def get_user_full_data(self, user_id: int) -> Optional[Dict]:
-        """Получает все данные пользователя и его сообщения для экспорта."""
         async with self.pool.acquire() as conn:
-            # Информация о пользователе
             user_row = await conn.fetchrow('SELECT * FROM users WHERE user_id = $1', user_id)
             if not user_row:
                 return None
-            
             user_data = dict(user_row)
-            
-            # Все сообщения пользователя
             messages_rows = await conn.fetch('''
                 SELECT message_id, text, forwarded_at, is_answered, answered_at, answer_text
                 FROM messages 
                 WHERE user_id = $1 
                 ORDER BY forwarded_at DESC
             ''', user_id)
-            
             user_data['messages'] = [dict(row) for row in messages_rows]
-            
-            # Количество неотвеченных
             user_data['unanswered_count'] = len([m for m in user_data['messages'] if not m['is_answered']])
-            
             return user_data
 
     async def get_unanswered_requests(self) -> List[Dict]:
-        """Get all unanswered messages with user info."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT m.message_id, m.text, m.forwarded_at, 
@@ -419,7 +404,7 @@ class Database:
             await conn.execute('UPDATE message_counter SET last_message_id = $1 WHERE id = 1', MESSAGE_ID_START)
             await conn.execute('UPDATE stats SET total_messages = 0, successful_forwards = 0, failed_forwards = 0, answers_sent = 0 WHERE id = 1')
             await conn.execute('UPDATE users SET messages_sent = 0')
-            logger.warning("🗑 Database cleared by admin command")
+            logger.warning("Database cleared by admin command")
 
     async def close(self):
         if self.pool:
@@ -437,7 +422,7 @@ class MessageForwardingBot:
         self.dp.include_router(self.router)
         self.is_running = True
         self.register_handlers()
-        logger.info("🤖 Bot instance created")
+        logger.info("Bot instance created")
 
     async def notify_admins(self, message: str, exclude_user_id: int = None):
         admins = await self.db.get_admins()
@@ -459,7 +444,6 @@ class MessageForwardingBot:
         return "Unknown User"
 
     def get_user_info_with_id(self, user_data: Dict) -> str:
-        """Возвращает информацию о пользователе с ID"""
         if user_data and user_data.get('username'):
             return f"@{user_data['username']} (ID: {user_data['user_id']})"
         elif user_data and (user_data.get('first_name') or user_data.get('last_name')):
@@ -484,8 +468,8 @@ class MessageForwardingBot:
             if datetime.now() > ban_until:
                 await self.db.unban_user(user_id)
                 return False, ""
-            return True, f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
-        return True, "навсегда"
+            return True, f"until {ban_until.strftime('%d.%m.%Y %H:%M')}"
+        return True, "permanently"
 
     async def check_rate_limit(self, user_id: int) -> tuple[bool, int]:
         user_data = await self.db.get_user(user_id)
@@ -502,24 +486,24 @@ class MessageForwardingBot:
     async def forward_message_to_admins(self, message: Message, user_data: Dict, message_id: int):
         content_preview = ""
         if message.text:
-            content_preview = f"\n💬 {message.text[:100]}{'...' if len(message.text) > 100 else ''}"
+            content_preview = f"\nText: {message.text[:100]}{'...' if len(message.text) > 100 else ''}"
         elif message.caption:
-            content_preview = f"\n📝 {message.caption[:100]}{'...' if len(message.caption) > 100 else ''}"
+            content_preview = f"\nCaption: {message.caption[:100]}{'...' if len(message.caption) > 100 else ''}"
         elif message.photo:
-            content_preview = "\n🖼 Фото"
+            content_preview = "\nPhoto"
         elif message.video:
-            content_preview = "\n🎬 Видео"
+            content_preview = "\nVideo"
         elif message.voice:
-            content_preview = "\n🎤 Голосовое"
+            content_preview = "\nVoice"
         elif message.sticker:
-            content_preview = "\n😊 Стикер"
+            content_preview = "\nSticker"
 
         text = (
-            f"📩 <b>Новое сообщение #{message_id}</b>\n"
-            f"<b>От:</b> {self.get_user_info_with_id(user_data)}\n"
-            f"<b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+            f"New message #{message_id}\n"
+            f"From: {self.get_user_info_with_id(user_data)}\n"
+            f"Time: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
             f"{content_preview}\n\n"
-            f"<i>Ответьте через: #ID текст</i>"
+            f"Reply with: #ID text"
         )
         admins = await self.db.get_admins()
         success_count = 0
@@ -539,30 +523,26 @@ class MessageForwardingBot:
                 success_count += 1
             except Exception as e:
                 logger.error(f"Error sending to admin {admin_id}: {e}")
-        logger.info(f"📊 Message #{message_id} forwarded to {success_count}/{len(admins)} admins")
+        logger.info(f"Message #{message_id} forwarded to {success_count}/{len(admins)} admins")
         return success_count
 
     def register_handlers(self):
-        # ========== НОВЫЙ ХЕНДЛЕР ДЛЯ КНОПКИ СОГЛАСИЯ ==========
+        
         @self.router.callback_query(lambda c: c.data == 'accept_tos')
         async def callback_accept_tos(callback_query: CallbackQuery):
             user_id = callback_query.from_user.id
             await self.db.accept_tos(user_id)
-            await callback_query.answer("✅ Спасибо! Условия приняты. Теперь вы можете пользоваться ботом.", show_alert=True)
-            
-            # Удаляем старое сообщение с кнопкой
+            await callback_query.answer("Thank you! Terms accepted. You can now use the bot.", show_alert=True)
             await callback_query.message.delete()
-            
-            # Отправляем стандартное приветственное сообщение
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))
+                InlineKeyboardButton(text="Open App", web_app=WebAppInfo(url=APP_URL))
             ]])
             user = callback_query.from_user
             await callback_query.message.answer(
-                f"<b>Привет, {user.first_name or 'пользователь'}.</b>\n\n"
-                f"<b>Это бот для отправки сообщений.</b>\n\n"
-                f"Отправляй сообщения в приложении\n"
-                f"Лимит: {RATE_LIMIT_MINUTES} минут между сообщениями",
+                f"Hello, {user.first_name or 'user'}.\n\n"
+                f"This bot allows you to send messages to the administrator.\n\n"
+                f"Use the app below to send messages.\n"
+                f"Limit: {RATE_LIMIT_MINUTES} minutes between messages",
                 reply_markup=keyboard
             )
             log_user_action("ACCEPTED_TOS", user.id, {'username': user.username, 'first_name': user.first_name})
@@ -572,81 +552,74 @@ class MessageForwardingBot:
         async def cmd_send_copy(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             
             args = message.text.split()
             if len(args) < 2:
-                return await message.answer("❌ Использование: /send_copy userID")
+                return await message.answer("Usage: /send_copy userID")
             
             try:
                 target_id = int(args[1])
             except ValueError:
-                return await message.answer("❌ Неверный ID пользователя")
+                return await message.answer("Invalid user ID")
             
-            # Получаем все данные пользователя
             user_data = await self.db.get_user_full_data(target_id)
             if not user_data:
-                return await message.answer(f"❌ Пользователь с ID {target_id} не найден")
+                return await message.answer(f"User with ID {target_id} not found")
             
-            # Формируем сообщение с данными
-            text = f"📋 <b>Данные пользователя ID: {target_id}</b>\n\n"
-            text += f"👤 Username: @{user_data.get('username', 'нет')}\n"
-            text += f"📝 Имя: {user_data.get('first_name', 'нет')} {user_data.get('last_name', '')}\n"
-            text += f"📅 Дата регистрации: {user_data['created_at'].strftime('%d.%m.%Y %H:%M') if user_data['created_at'] else 'N/A'}\n"
-            text += f"💬 Сообщений отправлено: {user_data.get('messages_sent', 0)}\n"
-            text += f"📨 Неотвеченных: {user_data['unanswered_count']}\n"
-            text += f"🚫 Забанен: {'Да' if user_data.get('is_banned') else 'Нет'}\n"
+            text = f"User data for ID: {target_id}\n\n"
+            text += f"Username: @{user_data.get('username', 'none')}\n"
+            text += f"Name: {user_data.get('first_name', 'none')} {user_data.get('last_name', '')}\n"
+            text += f"Registration date: {user_data['created_at'].strftime('%d.%m.%Y %H:%M') if user_data['created_at'] else 'N/A'}\n"
+            text += f"Messages sent: {user_data.get('messages_sent', 0)}\n"
+            text += f"Unanswered: {user_data['unanswered_count']}\n"
+            text += f"Banned: {'Yes' if user_data.get('is_banned') else 'No'}\n"
             if user_data.get('is_banned'):
-                text += f"   Причина: {user_data.get('ban_reason', 'не указана')}\n"
+                text += f"   Reason: {user_data.get('ban_reason', 'not specified')}\n"
                 if user_data.get('ban_until'):
-                    text += f"   До: {user_data['ban_until'].strftime('%d.%m.%Y %H:%M')}\n"
+                    text += f"   Until: {user_data['ban_until'].strftime('%d.%m.%Y %H:%M')}\n"
             
             await message.answer(text)
             
-            # Отправляем список сообщений, если они есть
             if user_data['messages']:
-                msgs_text = "📬 <b>История сообщений:</b>\n\n"
-                for i, msg in enumerate(user_data['messages'][:10], 1):  # Показываем последние 10
-                    status = "✅" if msg['is_answered'] else "⏳"
+                msgs_text = "Message history:\n\n"
+                for i, msg in enumerate(user_data['messages'][:10], 1):
+                    status = "answered" if msg['is_answered'] else "waiting"
                     date = msg['forwarded_at'].strftime('%d.%m %H:%M') if msg['forwarded_at'] else 'N/A'
                     msgs_text += f"{i}. #{msg['message_id']} {status} {date}\n"
                     msgs_text += f"   {msg['text'][:100]}{'...' if len(msg['text']) > 100 else ''}\n\n"
                 
                 if len(user_data['messages']) > 10:
-                    msgs_text += f"<i>… и ещё {len(user_data['messages']) - 10} сообщений</i>"
+                    msgs_text += f"... and {len(user_data['messages']) - 10} more messages"
                 
                 await message.answer(msgs_text)
             else:
-                await message.answer("📭 У пользователя нет сообщений")
+                await message.answer("User has no messages")
             
-            logger.info(f"📋 Admin {user.id} requested data copy of user {target_id}")
+            logger.info(f"Admin {user.id} requested data copy of user {target_id}")
 
-        # ========== КОМАНДА ДЛЯ УДАЛЕНИЯ ДАННЫХ ПОЛЬЗОВАТЕЛЯ ==========
         @self.router.message(Command("remove_data"))
         async def cmd_remove_data(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             
             args = message.text.split()
             if len(args) < 2:
-                return await message.answer("❌ Использование: /remove_data userID")
+                return await message.answer("Usage: /remove_data userID")
             
             try:
                 target_id = int(args[1])
             except ValueError:
-                return await message.answer("❌ Неверный ID пользователя")
+                return await message.answer("Invalid user ID")
             
-            # Проверяем существование пользователя
             user_data = await self.db.get_user(target_id)
             if not user_data:
-                return await message.answer(f"❌ Пользователь с ID {target_id} не найден")
+                return await message.answer(f"User with ID {target_id} not found")
             
-            # Не даем удалить админа
             if await self.db.is_admin(target_id) and target_id != OWNER_ID:
-                return await message.answer("❌ Нельзя удалить администратора")
+                return await message.answer("Cannot delete administrator")
             
-            # Генерируем код подтверждения
             confirm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
             self.db.remove_data_confirmations[f"remove_{user.id}_{target_id}"] = {
                 'code': confirm_code,
@@ -655,267 +628,268 @@ class MessageForwardingBot:
             }
             
             await message.answer(
-                f"⚠️ <b>ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ</b>\n\n"
-                f"Вы собираетесь полностью удалить пользователя ID: {target_id}\n"
-                f"Будут удалены:\n"
-                f"• Все сообщения пользователя\n"
-                f"• Профиль пользователя\n"
-                f"• История переписки\n\n"
-                f"Это действие <b>необратимо</b>.\n\n"
-                f"Для подтверждения отправьте этот код в течение 5 минут:\n"
-                f"<code>{confirm_code}</code>\n\n"
-                f"<i>Команда: /confirm_remove {target_id} {confirm_code}</i>"
+                f"CONFIRMATION REQUIRED\n\n"
+                f"You are about to completely delete user ID: {target_id}\n"
+                f"This will delete:\n"
+                f"• All user messages\n"
+                f"• User profile\n"
+                f"• Conversation history\n\n"
+                f"This action is irreversible.\n\n"
+                f"To confirm, send this code within 5 minutes:\n"
+                f"{confirm_code}\n\n"
+                f"Command: /confirm_remove {target_id} {confirm_code}"
             )
 
         @self.router.message(Command("confirm_remove"))
         async def cmd_confirm_remove(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             
             args = message.text.split()
             if len(args) < 3:
-                return await message.answer("❌ Использование: /confirm_remove ID КОД")
+                return await message.answer("Usage: /confirm_remove ID CODE")
             
             try:
                 target_id = int(args[1])
                 code = args[2].strip()
             except ValueError:
-                return await message.answer("❌ Неверный ID")
+                return await message.answer("Invalid ID")
             
             confirm_key = f"remove_{user.id}_{target_id}"
             confirm_data = self.db.remove_data_confirmations.get(confirm_key)
             
             if not confirm_data:
-                return await message.answer("❌ Нет активного запроса на удаление этого пользователя")
+                return await message.answer("No active deletion request for this user")
             
             if datetime.now() > confirm_data['expires']:
                 del self.db.remove_data_confirmations[confirm_key]
-                return await message.answer("❌ Время подтверждения истекло")
+                return await message.answer("Confirmation time expired")
             
             if code != confirm_data['code']:
-                return await message.answer("❌ Неверный код подтверждения")
+                return await message.answer("Invalid confirmation code")
             
-            # Выполняем удаление
             deleted = await self.db.delete_all_user_data(target_id)
             
             if deleted:
                 del self.db.remove_data_confirmations[confirm_key]
-                await message.answer(f"✅ Пользователь {target_id} и все его данные полностью удалены")
-                logger.info(f"🗑 Admin {user.id} removed all data of user {target_id}")
+                await message.answer(f"User {target_id} and all their data completely deleted")
+                logger.info(f"Admin {user.id} removed all data of user {target_id}")
                 
-                # Оповещаем других админов
                 admin_name = self.get_user_info(await self.db.get_user(user.id))
                 await self.notify_admins(
-                    f"🗑 Админ {admin_name} полностью удалил пользователя {target_id} и все его данные",
+                    f"Admin {admin_name} completely deleted user {target_id} and all their data",
                     exclude_user_id=user.id
                 )
             else:
-                await message.answer(f"❌ Не удалось удалить пользователя {target_id}")
+                await message.answer(f"Failed to delete user {target_id}")
 
         # ========== ОСНОВНЫЕ КОМАНДЫ ==========
         @self.router.message(CommandStart())
         async def cmd_start(message: Message):
             user = message.from_user
-            logger.info(f"🚀 /start command from user {user.id} (@{user.username})")
+            logger.info(f"/start command from user {user.id} (@{user.username})")
             await self.save_user_from_message(message)
             
-            # Проверяем, принял ли пользователь условия
             has_accepted = await self.db.has_accepted_tos(user.id)
             
             if not has_accepted:
-                # Показываем сообщение с условиями и кнопкой согласия
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Я принимаю условия", callback_data="accept_tos")
+                    InlineKeyboardButton(text="I Accept Terms", callback_data="accept_tos")
                 ]])
                 
                 await message.answer(
-                    f"<b>Привет, {user.first_name or 'пользователь'}.</b>\n\n"
-                    f"Для использования бота необходимо принять условия:\n\n"
-                    f"📄 <a href='https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26'>Политика конфиденциальности</a>\n"
-                    f"📄 <a href='https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26'>Условия использования</a>\n\n"
-                    f"Нажимая «Я принимаю условия», вы подтверждаете, что ознакомились и согласны с этими документами.",
+                    f"Hello, {user.first_name or 'user'}.\n\n"
+                    f"To use this bot, you must accept the terms:\n\n"
+                    f"Privacy Policy: https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26\n"
+                    f"Terms of Service: https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26\n\n"
+                    f"By clicking 'I Accept Terms', you confirm that you have read and agree to these documents.",
                     reply_markup=keyboard,
                     disable_web_page_preview=True
                 )
                 return
             
-            # Если уже принял условия, показываем обычное приветствие
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Open App", web_app=WebAppInfo(url=APP_URL))]])
             await message.answer(
-                f"<b>Привет, {message.from_user.first_name or 'пользователь'}.</b>\n\n"
-                f"<b>Это бот для отправки сообщений.</b>\n\n"
-                f"Отправляй сообщения в приложении\n"
-                f"Лимит: {RATE_LIMIT_MINUTES} минут между сообщениями",
+                f"Hello, {message.from_user.first_name or 'user'}.\n\n"
+                f"This bot allows you to send messages to the administrator.\n\n"
+                f"Use the app below to send messages.\n"
+                f"Limit: {RATE_LIMIT_MINUTES} minutes between messages",
                 reply_markup=keyboard
             )
             user_data = await self.db.get_user(message.from_user.id)
             log_user_action("START_COMMAND", message.from_user.id, {'username': user.username, 'first_name': user.first_name})
-            await self.notify_admins(f"<b>Новый пользователь:</b> {self.get_user_info_with_id(user_data)}", exclude_user_id=message.from_user.id)
+            await self.notify_admins(f"New user: {self.get_user_info_with_id(user_data)}", exclude_user_id=message.from_user.id)
 
         @self.router.message(Command("app"))
         async def cmd_app(message: Message):
             user = message.from_user
-            logger.info(f"📱 /app command from user {user.id}")
+            logger.info(f"/app command from user {user.id}")
             
-            # Проверяем принятие условий
             if not await self.db.has_accepted_tos(user.id):
-                return await message.answer("❌ Сначала необходимо принять условия использования. Введите /start")
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="I Accept Terms", callback_data="accept_tos")
+                ]])
+                await message.answer(
+                    f"You need to accept the terms first. Please use /start.",
+                    reply_markup=keyboard
+                )
+                return
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
-            await message.answer("📱 <b>Нажми кнопку ниже, чтобы открыть приложение</b>", reply_markup=keyboard)
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Open App", web_app=WebAppInfo(url=APP_URL))]])
+            await message.answer("Click the button below to open the app", reply_markup=keyboard)
             log_user_action("APP_COMMAND", user.id, {'username': user.username, 'first_name': user.first_name})
 
         @self.router.message(Command("help"))
         async def cmd_help(message: Message):
             user = message.from_user
-            logger.info(f"❓ /help command from user {user.id}")
+            logger.info(f"/help command from user {user.id}")
             if await self.db.is_admin(user.id):
                 await message.answer(
-                    "<b>Команды администратора:</b>\n\n"
-                    "• /app - открыть Mini App\n"
-                    "• /stats - статистика\n"
-                    "• /users - список пользователей (с ID)\n"
-                    "• /requests - список неотвеченных обращений\n"
-                    "• /get #ID - информация о сообщении\n"
-                    "• /del #ID - удалить сообщение (с подтверждением)\n"
-                    "• #ID текст - ответить на сообщение\n"
-                    "• /ban ID причина [часы] - заблокировать\n"
-                    "• /unban ID - разблокировать\n"
-                    "• /admin - управление админами (с ID)\n"
-                    "• /send_copy ID - получить копию данных пользователя\n"
-                    "• /remove_data ID - удалить все данные пользователя (с подтверждением)\n"
-                    "• /clear_db_1708 - очистить базу данных (удалить все сообщения)"
+                    "Admin commands:\n\n"
+                    "/app - open Mini App\n"
+                    "/stats - statistics\n"
+                    "/users - user list (with IDs)\n"
+                    "/requests - unanswered messages\n"
+                    "/get #ID - message info\n"
+                    "/del #ID - delete message (with confirmation)\n"
+                    "#ID text - reply to message\n"
+                    "/ban ID reason [hours] - ban user\n"
+                    "/unban ID - unban user\n"
+                    "/admin - admin management (with IDs)\n"
+                    "/send_copy ID - get user data copy\n"
+                    "/remove_data ID - delete all user data (with confirmation)\n"
+                    "/clear_db_1708 - clear database (delete all messages)"
                 )
             else:
                 await message.answer(
-                    "🤖 <b>Команды:</b>\n\n"
-                    "• /start - начать работу\n"
-                    "• /app - открыть приложение\n"
-                    "• /help - помощь\n\n"
-                    f"📱 Используй Mini App для отправки сообщений"
+                    "Commands:\n\n"
+                    "/start - start the bot\n"
+                    "/app - open app\n"
+                    "/help - this help\n\n"
+                    "Use the Mini App to send messages"
                 )
 
         @self.router.message(Command("stats"))
         async def cmd_stats(message: Message):
             user = message.from_user
-            logger.info(f"📊 /stats command from user {user.id}")
+            logger.info(f"/stats command from user {user.id}")
             if not await self.db.is_admin(user.id):
                 return
             stats = await self.db.get_stats()
             user_stats = await self.db.get_users_count()
             admins = await self.db.get_admins()
             text = (
-                f"📊 <b>Статистика</b>\n\n"
-                f"<b>Пользователи:</b>\n"
-                f"• Всего: {user_stats['total']}\n"
-                f"• Активных (24ч): {user_stats['active_today']}\n"
-                f"• Заблокировано: {user_stats['banned']}\n"
-                f"• Админов: {len(admins)}\n\n"
-                f"<b>Сообщения:</b>\n"
-                f"• Всего: {stats['total_messages']}\n"
-                f"• Ответов: {stats['answers_sent']}\n"
-                f"• Банов: {stats['bans_issued']}"
+                f"Statistics\n\n"
+                f"Users:\n"
+                f"Total: {user_stats['total']}\n"
+                f"Active (24h): {user_stats['active_today']}\n"
+                f"Banned: {user_stats['banned']}\n"
+                f"Admins: {len(admins)}\n\n"
+                f"Messages:\n"
+                f"Total: {stats['total_messages']}\n"
+                f"Answers: {stats['answers_sent']}\n"
+                f"Bans issued: {stats['bans_issued']}"
             )
             await message.answer(text)
 
         @self.router.message(Command("users"))
         async def cmd_users(message: Message):
             user = message.from_user
-            logger.info(f"👥 /users command from user {user.id}")
+            logger.info(f"/users command from user {user.id}")
             if not await self.db.is_admin(user.id):
                 return
             users = await self.db.get_all_users()
             if not users:
-                return await message.answer("📭 Нет пользователей")
+                return await message.answer("No users")
             
-            text = "👥 <b>Пользователи (ID + username):</b>\n\n"
+            text = "Users (ID + username):\n\n"
             for i, u in enumerate(users[:20], 1):
-                status = '🚫' if u.get('is_banned') else '✅'
+                status = 'BANNED' if u.get('is_banned') else 'ACTIVE'
                 is_admin = await self.db.is_admin(u['user_id'])
-                admin_star = '👑 ' if is_admin else ''
-                username = f"@{u['username']}" if u.get('username') else 'нет username'
-                tos_accepted = '✓' if u.get('accepted_tos') else '✗'
-                text += f"{i}. {status} {admin_star}{username} (ID: {u['user_id']}) [TOS: {tos_accepted}] | {u.get('messages_sent', 0)} msg\n"
+                admin_star = 'ADMIN ' if is_admin else ''
+                username = f"@{u['username']}" if u.get('username') else 'no username'
+                tos_accepted = 'ACCEPTED' if u.get('accepted_tos') else 'NOT ACCEPTED'
+                text += f"{i}. {status} {admin_star}{username} (ID: {u['user_id']}) [ToS: {tos_accepted}] | msgs: {u.get('messages_sent', 0)}\n"
             if len(users) > 20:
-                text += f"\n<i>Показано 20 из {len(users)}</i>"
+                text += f"\nShowing 20 of {len(users)}"
             await message.answer(text)
 
         @self.router.message(Command("ban"))
         async def cmd_ban(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             try:
                 args = message.text.split()[1:]
                 if len(args) < 2:
-                    return await message.answer("❌ /ban ID причина [часы]")
+                    return await message.answer("/ban ID reason [hours]")
                 peer_id = int(args[0])
                 if await self.db.is_admin(peer_id):
-                    return await message.answer("❌ Нельзя заблокировать админа")
+                    return await message.answer("Cannot ban admin")
                 reason = " ".join(args[1:-1]) if len(args) > 2 and args[-1].isdigit() else " ".join(args[1:])
                 hours = int(args[-1]) if len(args) > 2 and args[-1].isdigit() else None
                 if hours and (hours <= 0 or hours > MAX_BAN_HOURS):
-                    return await message.answer(f"❌ Часы: 1-{MAX_BAN_HOURS}")
+                    return await message.answer(f"Hours must be 1-{MAX_BAN_HOURS}")
                 ban_until = datetime.now() + timedelta(hours=hours) if hours else None
                 await self.db.ban_user(peer_id, reason, ban_until)
                 await self.db.update_stats(bans_issued=1)
-                ban_duration = f"на {hours} ч" if hours else "навсегда"
-                await message.answer(f"✅ Пользователь {peer_id} заблокирован {ban_duration}")
+                ban_duration = f"for {hours} h" if hours else "permanently"
+                await message.answer(f"User {peer_id} banned {ban_duration}")
             except Exception as e:
-                await message.answer(f"❌ Ошибка: {e}")
+                await message.answer(f"Error: {e}")
 
         @self.router.message(Command("unban"))
         async def cmd_unban(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             try:
                 args = message.text.split()[1:]
                 if len(args) < 1:
-                    return await message.answer("❌ /unban ID")
+                    return await message.answer("/unban ID")
                 peer_id = int(args[0])
                 await self.db.unban_user(peer_id)
-                await message.answer(f"✅ Пользователь {peer_id} разблокирован")
+                await message.answer(f"User {peer_id} unbanned")
             except Exception as e:
-                await message.answer(f"❌ Ошибка: {e}")
+                await message.answer(f"Error: {e}")
 
         @self.router.message(Command("admin"))
         async def cmd_admin(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             text = message.text.split()
             if len(text) == 1:
-                await message.answer("👑 <b>Управление админами</b>\n\n• /admin add ID - добавить\n• /admin remove ID - удалить\n• /admin list - список (с ID)")
+                await message.answer("Admin management:\n\n/admin add ID - add\n/admin remove ID - remove\n/admin list - list (with IDs)")
             elif len(text) >= 3:
                 action = text[1].lower()
                 try:
                     target_id = int(text[2])
                     if action == "add":
                         if target_id == OWNER_ID:
-                            return await message.answer("👑 Владелец уже админ")
+                            return await message.answer("Owner is already admin")
                         if await self.db.add_admin(target_id, user.id):
-                            await message.answer(f"✅ Админ {target_id} добавлен")
+                            await message.answer(f"Admin {target_id} added")
                         else:
-                            await message.answer("❌ Ошибка")
+                            await message.answer("Error")
                     elif action == "remove":
                         if target_id == OWNER_ID:
-                            return await message.answer("❌ Нельзя удалить владельца")
+                            return await message.answer("Cannot remove owner")
                         if await self.db.remove_admin(target_id):
-                            await message.answer(f"✅ Админ {target_id} удален")
+                            await message.answer(f"Admin {target_id} removed")
                         else:
-                            await message.answer("❌ Ошибка")
+                            await message.answer("Error")
                 except ValueError:
-                    await message.answer("❌ Неверный ID")
+                    await message.answer("Invalid ID")
             elif len(text) == 2 and text[1].lower() == "list":
                 admins = await self.db.get_admins()
-                admin_text = "👑 <b>Администраторы (ID + username):</b>\n\n"
+                admin_text = "Admins (ID + username):\n\n"
                 for i, aid in enumerate(admins, 1):
                     ud = await self.db.get_user(aid) or {}
-                    username = f"@{ud['username']}" if ud.get('username') else 'нет username'
+                    username = f"@{ud['username']}" if ud.get('username') else 'no username'
                     if aid == OWNER_ID:
-                        admin_text += f"{i}. 👑 {username} (ID: {aid}) (владелец)\n"
+                        admin_text += f"{i}. OWNER {username} (ID: {aid})\n"
                     else:
                         admin_text += f"{i}. {username} (ID: {aid})\n"
                 await message.answer(admin_text)
@@ -924,9 +898,8 @@ class MessageForwardingBot:
         async def cmd_clear_db(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             
-            # Генерируем код подтверждения
             confirm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
             self.db.delete_confirmations[user.id] = {
                 'code': confirm_code,
@@ -934,47 +907,45 @@ class MessageForwardingBot:
             }
             
             await message.answer(
-                f"⚠️ <b>ОПАСНОЕ ДЕЙСТВИЕ</b>\n\n"
-                f"Вы собираетесь полностью очистить базу данных.\n"
-                f"Все сообщения будут безвозвратно удалены.\n\n"
-                f"Для подтверждения отправьте этот код в течение 5 минут:\n"
-                f"<code>{confirm_code}</code>\n\n"
-                f"<i>Команда: /confirm_clear {confirm_code}</i>"
+                f"DANGEROUS ACTION\n\n"
+                f"You are about to completely clear the database.\n"
+                f"All messages will be permanently deleted.\n\n"
+                f"To confirm, send this code within 5 minutes:\n"
+                f"{confirm_code}\n\n"
+                f"Command: /confirm_clear {confirm_code}"
             )
 
         @self.router.message(Command("confirm_clear"))
         async def cmd_confirm_clear(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             
             args = message.text.split()
             if len(args) < 2:
-                return await message.answer("❌ Использование: /confirm_clear КОД")
+                return await message.answer("Usage: /confirm_clear CODE")
             
             code = args[1].strip()
             confirm_data = self.db.delete_confirmations.get(user.id)
             
             if not confirm_data:
-                return await message.answer("❌ Нет активного запроса на очистку")
+                return await message.answer("No active clear request")
             
             if datetime.now() > confirm_data['expires']:
                 del self.db.delete_confirmations[user.id]
-                return await message.answer("❌ Время подтверждения истекло")
+                return await message.answer("Confirmation time expired")
             
             if code != confirm_data['code']:
-                return await message.answer("❌ Неверный код подтверждения")
+                return await message.answer("Invalid confirmation code")
             
-            # Выполняем очистку
             await self.db.clear_database()
             del self.db.delete_confirmations[user.id]
             
-            await message.answer("✅ База данных полностью очищена")
+            await message.answer("Database completely cleared")
             
-            # Оповещаем других админов
             admin_name = self.get_user_info(await self.db.get_user(user.id))
             await self.notify_admins(
-                f"⚠️ Админ {admin_name} полностью очистил базу данных",
+                f"Admin {admin_name} completely cleared the database",
                 exclude_user_id=user.id
             )
 
@@ -982,60 +953,56 @@ class MessageForwardingBot:
         async def cmd_get_message(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             parts = message.text.split(maxsplit=1)
             if len(parts) < 2:
-                return await message.answer("❌ Использование: /get #ID")
+                return await message.answer("Usage: /get #ID")
             arg = parts[1].strip()
-            # Извлекаем цифры, если есть решётка
             msg_id_str = arg.lstrip('#')
             if not msg_id_str.isdigit():
-                return await message.answer("❌ Некорректный ID. Пример: /get #123 или /get 123")
+                return await message.answer("Invalid ID. Example: /get #123 or /get 123")
             msg_id = int(msg_id_str)
             msg_data = await self.db.get_message_with_details(msg_id)
             if not msg_data:
-                return await message.answer(f"❌ Сообщение #{msg_id} не найдено")
+                return await message.answer(f"Message #{msg_id} not found")
 
-            # Формируем ответ
             user_info = f"{msg_data.get('user_first_name', '')} {msg_data.get('user_last_name', '')}".strip() or "No name"
             if msg_data.get('username'):
                 user_info += f" (@{msg_data['username']})"
-            text = f"📄 <b>Сообщение #{msg_id}</b>\n"
-            text += f"👤 Отправитель: {user_info} (ID: {msg_data['user_id']})\n"
-            text += f"📅 Дата: {msg_data['forwarded_at'].strftime('%d.%m.%Y %H:%M') if msg_data['forwarded_at'] else 'N/A'}\n"
-            text += f"📝 Текст:\n{msg_data.get('text', '')}\n"
+            text = f"Message #{msg_id}\n"
+            text += f"Sender: {user_info} (ID: {msg_data['user_id']})\n"
+            text += f"Date: {msg_data['forwarded_at'].strftime('%d.%m.%Y %H:%M') if msg_data['forwarded_at'] else 'N/A'}\n"
+            text += f"Text:\n{msg_data.get('text', '')}\n"
             if msg_data.get('is_answered'):
                 answered_by = msg_data.get('answered_by_name') or f"ID {msg_data['answered_by']}"
-                text += f"✅ Ответ ({msg_data['answered_at'].strftime('%d.%m.%Y %H:%M') if msg_data['answered_at'] else ''}):\n{msg_data.get('answer_text', '')}\n"
-                text += f"👤 Ответил: {answered_by}\n"
+                text += f"Answer ({msg_data['answered_at'].strftime('%d.%m.%Y %H:%M') if msg_data['answered_at'] else ''}):\n{msg_data.get('answer_text', '')}\n"
+                text += f"Answered by: {answered_by}\n"
             else:
-                text += "⏳ Статус: ожидает ответа"
+                text += "Status: waiting for answer"
             await message.answer(text)
 
         @self.router.message(Command("del"))
         async def cmd_delete_message(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             
             parts = message.text.split(maxsplit=1)
             if len(parts) < 2:
-                return await message.answer("❌ Использование: /del #ID")
+                return await message.answer("Usage: /del #ID")
             
             arg = parts[1].strip()
             msg_id_str = arg.lstrip('#')
             
             if not msg_id_str.isdigit():
-                return await message.answer("❌ Некорректный ID. Пример: /del #123")
+                return await message.answer("Invalid ID. Example: /del #123")
             
             msg_id = int(msg_id_str)
             
-            # Проверяем существование
             msg_data = await self.db.get_message(msg_id)
             if not msg_data:
-                return await message.answer(f"❌ Сообщение #{msg_id} не найдено")
+                return await message.answer(f"Message #{msg_id} not found")
             
-            # Генерируем код подтверждения
             confirm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
             self.db.delete_confirmations[f"del_{user.id}_{msg_id}"] = {
                 'code': confirm_code,
@@ -1044,127 +1011,141 @@ class MessageForwardingBot:
             }
             
             await message.answer(
-                f"⚠️ <b>Подтверждение удаления</b>\n\n"
-                f"Вы собираетесь удалить сообщение #{msg_id}\n\n"
-                f"Для подтверждения отправьте этот код:\n"
-                f"<code>{confirm_code}</code>\n\n"
-                f"<i>Команда: /confirm_del {msg_id} {confirm_code}</i>"
+                f"Delete confirmation\n\n"
+                f"You are about to delete message #{msg_id}\n\n"
+                f"To confirm, send this code:\n"
+                f"{confirm_code}\n\n"
+                f"Command: /confirm_del {msg_id} {confirm_code}"
             )
 
         @self.router.message(Command("confirm_del"))
         async def cmd_confirm_delete(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             
             args = message.text.split()
             if len(args) < 3:
-                return await message.answer("❌ Использование: /confirm_del ID КОД")
+                return await message.answer("Usage: /confirm_del ID CODE")
             
             try:
                 msg_id = int(args[1])
                 code = args[2].strip()
             except ValueError:
-                return await message.answer("❌ Неверный ID")
+                return await message.answer("Invalid ID")
             
             confirm_key = f"del_{user.id}_{msg_id}"
             confirm_data = self.db.delete_confirmations.get(confirm_key)
             
             if not confirm_data:
-                return await message.answer("❌ Нет активного запроса на удаление этого сообщения")
+                return await message.answer("No active deletion request for this message")
             
             if datetime.now() > confirm_data['expires']:
                 del self.db.delete_confirmations[confirm_key]
-                return await message.answer("❌ Время подтверждения истекло")
+                return await message.answer("Confirmation time expired")
             
             if code != confirm_data['code']:
-                return await message.answer("❌ Неверный код подтверждения")
+                return await message.answer("Invalid confirmation code")
             
-            # Выполняем удаление
             deleted = await self.db.delete_message(msg_id)
             
             if deleted:
                 del self.db.delete_confirmations[confirm_key]
-                await message.answer(f"✅ Сообщение #{msg_id} удалено")
-                logger.info(f"🗑 Admin {user.id} deleted message #{msg_id}")
+                await message.answer(f"Message #{msg_id} deleted")
+                logger.info(f"Admin {user.id} deleted message #{msg_id}")
                 
-                # Оповещаем других админов
                 admin_name = self.get_user_info(await self.db.get_user(user.id))
                 await self.notify_admins(
-                    f"🗑 Админ {admin_name} удалил сообщение #{msg_id}",
+                    f"Admin {admin_name} deleted message #{msg_id}",
                     exclude_user_id=user.id
                 )
             else:
-                await message.answer(f"❌ Не удалось удалить сообщение #{msg_id}")
+                await message.answer(f"Failed to delete message #{msg_id}")
 
         @self.router.message(Command("requests"))
         async def cmd_requests(message: Message):
             user = message.from_user
             if not await self.db.is_admin(user.id):
-                return await message.answer("❌ Нет прав")
+                return await message.answer("No rights")
             unanswered = await self.db.get_unanswered_requests()
             if not unanswered:
-                await message.answer("✅ Нет неотвеченных обращений")
+                await message.answer("No unanswered requests")
                 return
             
-            # Формируем список с пагинацией
-            text = "📋 <b>Неотвеченные обращения:</b>\n\n"
+            text = "Unanswered requests:\n\n"
             for i, req in enumerate(unanswered[:20], 1):
                 dt = req['forwarded_at'].strftime('%d.%m %H:%M') if req['forwarded_at'] else 'N/A'
                 user_name = req.get('first_name') or req.get('username') or f"ID {req['user_id']}"
                 user_id = req['user_id']
                 msg_snippet = (req['text'][:50] + '…') if req['text'] and len(req['text']) > 50 else (req['text'] or '')
-                text += f"{i}. #{req['message_id']} от {dt} — {user_name} (ID: {user_id})\n"
+                text += f"{i}. #{req['message_id']} from {dt} — {user_name} (ID: {user_id})\n"
                 text += f"   {msg_snippet}\n\n"
             if len(unanswered) > 20:
-                text += f"<i>… и ещё {len(unanswered)-20} обращений</i>"
+                text += f"... and {len(unanswered)-20} more requests"
             await message.answer(text)
 
+        # ========== УНИВЕРСАЛЬНЫЙ ХЕНДЛЕР ДЛЯ ВСЕХ СООБЩЕНИЙ ==========
         @self.router.message()
         async def handle_message(message: Message):
             user = message.from_user
             user_id = user.id
             is_admin = await self.db.is_admin(user_id)
             
-            # Проверяем принятие условий (для не-админов)
-            if not is_admin and not await self.db.has_accepted_tos(user_id):
-                return await message.answer("❌ Сначала необходимо принять условия использования. Введите /start")
-            
-            if message.text and message.text.startswith('#'):
-                if is_admin:
+            # АДМИНЫ ПРОПУСКАЮТ ПРОВЕРКУ
+            if is_admin:
+                if message.text and message.text.startswith('#'):
                     await self.handle_answer_command(message)
                 else:
-                    await message.answer("❌ Только администраторы могут отвечать")
+                    await message.answer("To reply, use:\n#ID reply text\n\nExample: #100569 Thank you for your message!")
                 return
             
-            if is_admin:
-                await message.answer("👑 <b>Для ответа используйте:</b>\n<code>#ID текст ответа</code>\n\nНапример: #100569 Спасибо за обращение!")
+            # ДЛЯ ВСЕХ НЕ-АДМИНОВ — ПРОВЕРЯЕМ ПРИНЯТИЕ TOS
+            if not await self.db.has_accepted_tos(user_id):
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="I Accept Terms", callback_data="accept_tos")
+                ]])
+                await message.answer(
+                    f"Hello, {user.first_name or 'user'}.\n\n"
+                    f"To use this bot, you must accept the terms:\n\n"
+                    f"Privacy Policy: https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26\n"
+                    f"Terms of Service: https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26\n\n"
+                    f"By clicking 'I Accept Terms', you confirm that you have read and agree to these documents.",
+                    reply_markup=keyboard,
+                    disable_web_page_preview=True
+                )
                 return
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
-            await message.answer("<b>Отправка сообщений доступна только через приложение ниже.</b>\n\n", reply_markup=keyboard)
+            # ЕСЛИ УЖЕ ПРИНЯЛ — ПОКАЗЫВАЕМ КНОПКУ ПРИЛОЖЕНИЯ
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Open App", web_app=WebAppInfo(url=APP_URL))]])
+            await message.answer(
+                f"Hello, {user.first_name or 'user'}.\n\n"
+                f"This bot allows you to send messages to the administrator.\n\n"
+                f"Use the app below to send messages.\n"
+                f"Limit: {RATE_LIMIT_MINUTES} minutes between messages",
+                reply_markup=keyboard
+            )
 
     async def handle_answer_command(self, message: Message):
         user = message.from_user
         text = message.text.strip()
         match = re.match(r'^#(\d+)\s+(.+)$', text, re.DOTALL)
         if not match:
-            await message.answer("❌ Неверный формат. Используйте: #ID текст ответа")
+            await message.answer("Invalid format. Use: #ID reply text")
             return
         message_id = int(match.group(1))
         answer_text = match.group(2).strip()
         original = await self.db.get_message(message_id)
         if not original:
-            await message.answer(f"❌ Сообщение #{message_id} не найдено")
+            await message.answer(f"Message #{message_id} not found")
             return
         user_id = original['user_id']
         is_banned, _ = await self.check_ban_status(user_id)
         if is_banned:
-            await message.answer("❌ Пользователь заблокирован")
+            await message.answer("User is banned")
             return
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=APP_URL))
+            InlineKeyboardButton(text="Open App", web_app=WebAppInfo(url=APP_URL))
         ]])
 
         try:
@@ -1172,29 +1153,28 @@ class MessageForwardingBot:
 
             await self.bot.send_message(
                 user_id,
-                f"🔔 <b>Вам поступил ответ на сообщение #{message_id}</b>\n\n"
-                f"<i>Посмотреть ответ можно в приложении.</i>",
+                f"You have received a reply to message #{message_id}\n\n"
+                f"You can view the reply in the app.",
                 reply_markup=keyboard
             )
 
             await self.db.mark_message_answered(message_id, user.id, answer_text)
             await self.db.update_stats(answers_sent=1)
 
-            await message.answer(f"✅ Ответ на #{message_id} отправлен пользователю")
+            await message.answer(f"Reply to #{message_id} sent to user")
 
             user_info = await self.db.get_user(user_id)
             await self.notify_admins(
-                f"💬 Админ {admin_name} ответил на #{message_id} пользователю {self.get_user_info_with_id(user_info)}",
+                f"Admin {admin_name} replied to #{message_id} for user {self.get_user_info_with_id(user_info)}",
                 exclude_user_id=user.id
             )
         except Exception as e:
             logger.error(f"Reply error: {e}\n{traceback.format_exc()}")
-            await message.answer("❌ Не удалось отправить ответ (ошибка сервера)")
+            await message.answer("Failed to send reply (server error)")
 
     async def process_web_app_message(self, user_id: int, text: str):
         user_data = await self.db.get_user(user_id)
         
-        # Проверяем бан
         if user_data and user_data.get('is_banned'):
             ban_until = user_data.get('ban_until')
             if ban_until and datetime.now() > ban_until.replace(tzinfo=None):
@@ -1202,11 +1182,9 @@ class MessageForwardingBot:
             else:
                 return False, "banned"
         
-        # Проверяем принятие условий (для не-админов)
         if not await self.db.is_admin(user_id) and not await self.db.has_accepted_tos(user_id):
             return False, "tos_not_accepted"
         
-        # Проверка rate limit для не-админов
         if not await self.db.is_admin(user_id):
             can_send, remaining = await self.check_rate_limit(user_id)
             if not can_send:
@@ -1245,20 +1223,20 @@ class MessageForwardingBot:
             return False, "error"
 
     async def shutdown(self, sig=None):
-        logger.info(f"🛑 Shutting down... Signal: {sig}")
+        logger.info(f"Shutting down... Signal: {sig}")
         self.is_running = False
         await self.bot.session.close()
         await self.dp.stop_polling()
         await self.db.close()
-        logger.info("✅ Shutdown complete")
+        logger.info("Shutdown complete")
 
     async def run_polling(self):
         try:
             await self.bot.delete_webhook(drop_pending_updates=True)
             await asyncio.sleep(1)
-            logger.info("🤖 Bot started (polling mode)")
-            logger.info(f"👑 Owner: {OWNER_ID}")
-            logger.info(f"📱 Mini App URL: {APP_URL}")
+            logger.info("Bot started (polling mode)")
+            logger.info(f"Owner: {OWNER_ID}")
+            logger.info(f"Mini App URL: {APP_URL}")
             while self.is_running:
                 try:
                     await self.dp.start_polling(self.bot)
@@ -1273,7 +1251,7 @@ class MessageForwardingBot:
 # ==================== Web Server Handlers ====================
 async def main():
     if not BOT_TOKEN or not DATABASE_URL:
-        logger.error("❌ Missing BOT_TOKEN or DATABASE_URL")
+        logger.error("Missing BOT_TOKEN or DATABASE_URL")
         return
 
     db = Database(DATABASE_URL)
@@ -1283,7 +1261,6 @@ async def main():
 
     app = web.Application()
 
-    # Static files
     async def static_files_handler(request: web.Request) -> web.Response:
         filename = request.match_info['filename']
         file_path = os.path.join(os.path.dirname(__file__), 'mini_app', filename)
@@ -1322,7 +1299,7 @@ async def main():
         try:
             data = await request.json()
             init_data = data.get('initData')
-            logger.info(f"🔐 Auth request received, initData length: {len(init_data) if init_data else 0}")
+            logger.info(f"Auth request received, initData length: {len(init_data) if init_data else 0}")
             if not init_data:
                 return web.json_response({'ok': False, 'error': 'No initData'})
 
@@ -1333,7 +1310,7 @@ async def main():
             if not user_id:
                 return web.json_response({'ok': False, 'error': 'User ID not found'})
 
-            logger.info(f"👤 Auth from user {user_id} (@{user_info.get('username', 'N/A')})")
+            logger.info(f"Auth from user {user_id} (@{user_info.get('username', 'N/A')})")
             await db.save_user(user_id, username=user_info.get('username'), first_name=user_info.get('first_name'), last_name=user_info.get('last_name'))
             log_user_action("AUTH", user_id, {'username': user_info.get('username'), 'first_name': user_info.get('first_name')})
 
@@ -1387,20 +1364,19 @@ async def main():
             if success:
                 return web.json_response({'ok': True, 'message_id': result})
             else:
-                # Если это rate limit, возвращаем понятное сообщение
                 if isinstance(result, str) and result.startswith('rate_limit:'):
                     minutes = result.split(':')[1]
                     return web.json_response({
                         'ok': False, 
                         'error': 'rate_limit',
                         'minutes': minutes,
-                        'message': f'Лимит: {RATE_LIMIT_MINUTES} минут. Осталось: {minutes} мин.'
+                        'message': f'Limit: {RATE_LIMIT_MINUTES} minutes. Remaining: {minutes} min.'
                     })
                 elif result == 'tos_not_accepted':
                     return web.json_response({
                         'ok': False,
                         'error': 'tos_not_accepted',
-                        'message': 'Необходимо принять условия использования в боте. Напишите /start'
+                        'message': 'You must accept the terms of use in the bot. Type /start'
                     })
                 else:
                     return web.json_response({'ok': False, 'error': result})
@@ -1454,11 +1430,10 @@ async def main():
         return web.Response(text="OK")
 
     async def shutdown_handler(sig):
-        logger.info(f"📡 Received signal {sig}, shutting down...")
+        logger.info(f"Received signal {sig}, shutting down...")
         await bot.shutdown(sig)
         await asyncio.sleep(1)
 
-    # Routes
     app.router.add_get('/{filename:.*\.js$}', static_files_handler)
     app.router.add_get('/{filename:.*\.css$}', static_files_handler)
     app.router.add_get('/{filename:.*\.png$}', static_files_handler)
@@ -1472,13 +1447,13 @@ async def main():
     app.router.add_get('/api/messages/sent', api_messages_sent_handler)
     app.router.add_get('/health', health_handler)
 
-    logger.info("✅ Routes registered")
+    logger.info("Routes registered")
 
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
-    logger.info(f"🚀 HTTP server started on port {PORT}")
+    logger.info(f"HTTP server started on port {PORT}")
 
     if sys.platform != 'win32':
         loop = asyncio.get_running_loop()
@@ -1488,7 +1463,7 @@ async def main():
     try:
         await bot.run_polling()
     except KeyboardInterrupt:
-        logger.info("🛑 Keyboard interrupt")
+        logger.info("Keyboard interrupt")
     finally:
         await runner.cleanup()
 
@@ -1496,6 +1471,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("🛑 Bot interrupted")
+        logger.info("Bot interrupted")
     except Exception as e:
-        logger.critical(f"💥 Fatal: {e}\n{traceback.format_exc()}")
+        logger.critical(f"Fatal: {e}\n{traceback.format_exc()}")
