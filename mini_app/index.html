@@ -650,7 +650,7 @@
             Для использования приложения необходимо принять<br>
             <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank" style="color: var(--accent-light);">Политику конфиденциальности</a> и 
             <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" style="color: var(--accent-light);">Условия использования</a>.<br><br>
-            Пожалуйста, вернитесь в чат с ботом и нажмите кнопку "Я принимаю условия".
+            Вернитесь в чат с ботом и нажмите кнопку "Я принимаю условия".
         </div>
         <button class="tos-button" id="closeAppBtn">Close app</button>
     </div>
@@ -701,9 +701,8 @@
             </button>  
         </div>
     </div>  
-
     <script>
-        // ========== ПРОВЕРКА ToS ПЕРВЫМ ДЕЛОМ ==========
+        // ========== ПРОВЕРКА ToS ПЕРВЫМ ДЕЛОМ, НО АНИМАЦИЯ ЗАПУСКАЕТСЯ СРАЗУ ==========
         (async function() {
             const tg = window.Telegram.WebApp;
             const splash = document.getElementById('splash');
@@ -711,17 +710,22 @@
             const app = document.getElementById('app');
             
             tg.expand();
+            tg.setHeaderColor('#232323');
+            tg.setBackgroundColor('#232323');
             
             // Скрываем всё кроме splash
             tosWarning.classList.add('hidden');
             app.style.display = 'none';
             
+            // 1. СРАЗУ запускаем анимацию (не ждем проверку!)
+            startOriginalAnimation();
+            
+            // 2. Параллельно проверяем ToS
             try {
-                // 1. МГНОВЕННАЯ проверка ToS
                 const authResult = await authenticate(tg.initData);
                 
                 if (authResult && authResult.ok && authResult.user && authResult.user.accepted_tos === true) {
-                    // ToS ПРИНЯТ - сохраняем данные и ЗАПУСКАЕМ ОРИГИНАЛЬНУЮ АНИМАЦИЮ
+                    // ToS ПРИНЯТ - сохраняем данные
                     window.userData = authResult.user;
                     window.tg = tg;
                     
@@ -734,23 +738,21 @@
                         document.getElementById('unansweredBadge').classList.remove('hidden');
                     }
                     
-                    // НО начинаем загрузку сообщений в фоне (не дожидаясь анимации)
+                    // Грузим сообщения в фоне
                     Promise.all([
-                        loadInboxMessages(tg.initData),
-                        loadSentMessages(tg.initData)
+                        loadInboxMessages(tg.initData).catch(() => []),
+                        loadSentMessages(tg.initData).catch(() => [])
                     ]).then(() => {
-                        // Когда анимация закончится и данные будут готовы - настраиваем интерфейс
                         setupTabs();
                         setupEventListeners();
                     }).catch(console.error);
                     
-                    // ЗАПУСКАЕМ ОРИГИНАЛЬНУЮ АНИМАЦИЮ (все как было)
-                    startOriginalAnimation();
-                    
                 } else {
-                    // ToS НЕ ПРИНЯТ - показываем предупреждение и НЕ запускаем анимацию
-                    splash.style.display = 'none';
-                    tosWarning.classList.remove('hidden');
+                    // ToS НЕ ПРИНЯТ - показываем предупреждение ПОСЛЕ анимации
+                    setTimeout(() => {
+                        splash.style.display = 'none';
+                        tosWarning.classList.remove('hidden');
+                    }, 4500); // Ждем окончания анимации (почти 4.5 сек)
                     
                     document.getElementById('closeAppBtn').addEventListener('click', function() {
                         if (tg) {
@@ -762,8 +764,11 @@
                 }
             } catch (error) {
                 console.error('Auth check error:', error);
-                splash.style.display = 'none';
-                tosWarning.classList.remove('hidden');
+                // В случае ошибки - все равно показываем интерфейс
+                setTimeout(() => {
+                    splash.style.display = 'none';
+                    app.style.display = 'flex';
+                }, 4500);
             }
         })();
 
@@ -826,6 +831,12 @@
             
             initAudio();
             
+            // Добавляем обработчик клика для аудио (для мобильных)
+            document.body.addEventListener('click', function initAudioOnClick() {
+                initAudio();
+                document.body.removeEventListener('click', initAudioOnClick);
+            }, { once: true });
+            
             avContainer.addEventListener('animationstart', function(e) {
                 if (e.animationName === 'letterA' || e.animationName === 'letterV') {
                     playAppearanceSound();
@@ -840,7 +851,7 @@
             });
         }
 
-        // ========== ВСЕ ОРИГИНАЛЬНЫЕ ФУНКЦИИ С ИСПРАВЛЕНИЕМ ==========
+        // ========== ФУНКЦИИ ДЛЯ РАБОТЫ С API ==========
         async function authenticate(initData) {
             if (!initData) {
                 return { ok: false, error: 'Нет данных авторизации' };
@@ -848,12 +859,12 @@
             
             try {
                 const response = await fetch('/api/auth', {
-                    method: 'POST',  // ← ИСПРАВЛЕНО: был GET, стал POST
+                    method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({ initData })  // ← ИСПРАВЛЕНО: данные в body
+                    body: JSON.stringify({ initData })
                 });
                 
                 if (!response.ok) {
@@ -869,7 +880,6 @@
         async function loadInboxMessages(initData) {
             try {
                 const response = await fetch('/api/messages/inbox', {
-                    method: 'GET',
                     headers: { 'X-Telegram-Init-Data': initData }
                 });
                 
@@ -890,7 +900,6 @@
         async function loadSentMessages(initData) {
             try {
                 const response = await fetch('/api/messages/sent', {
-                    method: 'GET',
                     headers: { 'X-Telegram-Init-Data': initData }
                 });
                 
@@ -948,8 +957,6 @@
                             message: `Сообщение #${result.message_id} отправлено!`,
                             buttons: [{ type: 'ok' }]
                         });
-                    } else {
-                        alert(`Сообщение #${result.message_id} отправлено!`);
                     }
                 } else {
                     alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
@@ -963,7 +970,6 @@
                 if (hasText) sendBtn.classList.add('active');
             }
         }
-
         function displayInboxMessages(messages) {
             const container = document.getElementById('inboxMessages');
             if (!container) return;
@@ -971,7 +977,7 @@
             if (!messages || messages.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-icon">📨</div>
+                        <div class="empty-icon">:(</div>
                         <h3>Нет ответов</h3>
                         <p>Когда админ ответит, они появятся здесь</p>
                     </div>
@@ -1028,7 +1034,7 @@
             if (!messages || messages.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-icon">📭</div>
+                        <div class="empty-icon">:(</div>
                         <h3>Нет сообщений</h3>
                         <p>Напишите первое сообщение</p>
                     </div>
@@ -1079,6 +1085,7 @@
             container.innerHTML = html;
         }
 
+        // ========== НАСТРОЙКА ИНТЕРФЕЙСА ==========
         function setupTabs() {
             const tabButtons = document.querySelectorAll('.tab-btn');
             const tabs = document.querySelectorAll('.tab');
