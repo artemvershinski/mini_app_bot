@@ -45,6 +45,7 @@
             position: relative;
         }
 
+        /* SPLASH SCREEN */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -207,12 +208,14 @@
             100% { transform: scale(15) translateY(-200vh); opacity: 0; filter: blur(10px); }
         }
 
+        /* BANNED SCREEN */
         .banned-screen {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
+            background: var(--bg-primary);
             display: none;
             flex-direction: column;
             justify-content: center;
@@ -220,7 +223,6 @@
             padding: 24px;
             z-index: 2000;
             text-align: center;
-            background: var(--bg-primary);
         }
 
         .banned-screen.visible {
@@ -257,7 +259,7 @@
             position: relative;
             animation: glitch 3s infinite;
             line-height: 1;
-            color: var(--accent);
+            color: #ffffff;
         }
 
         .banned-title::before,
@@ -272,15 +274,32 @@
         }
 
         .banned-title::before {
-            color: var(--accent-light);
+            color: rgba(255, 255, 255, 0.7);
             z-index: -1;
             animation: glitch-offset 0.3s infinite linear alternate;
         }
 
         .banned-title::after {
-            color: var(--accent);
+            color: rgba(255, 255, 255, 0.4);
             z-index: -2;
             animation: glitch-offset2 0.2s infinite linear alternate;
+        }
+
+        @keyframes glitch {
+            0%, 100% { transform: skew(0deg); }
+            2% { transform: skew(2deg); }
+            4% { transform: skew(-2deg); }
+            6% { transform: skew(0deg); }
+        }
+
+        @keyframes glitch-offset {
+            0% { left: -3px; top: -1px; }
+            100% { left: 3px; top: 1px; }
+        }
+
+        @keyframes glitch-offset2 {
+            0% { left: 3px; top: 1px; }
+            100% { left: -3px; top: -1px; }
         }
 
         .banned-message {
@@ -303,6 +322,12 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             animation: border-pulse 2s infinite;
             letter-spacing: 0.5px;
+        }
+
+        @keyframes border-pulse {
+            0% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
+            50% { border-color: var(--accent); box-shadow: 0 0 30px var(--glow-color); }
+            100% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
         }
 
         .banned-button {
@@ -351,29 +376,7 @@
             100% { box-shadow: 0 0 30px rgba(187, 106, 253, 0.3); }
         }
 
-        @keyframes border-pulse {
-            0% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
-            50% { border-color: var(--accent); box-shadow: 0 0 30px var(--glow-color); }
-            100% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
-        }
-
-        @keyframes glitch {
-            0%, 100% { transform: skew(0deg); }
-            2% { transform: skew(2deg); }
-            4% { transform: skew(-2deg); }
-            6% { transform: skew(0deg); }
-        }
-
-        @keyframes glitch-offset {
-            0% { left: -3px; top: -1px; }
-            100% { left: 3px; top: 1px; }
-        }
-
-        @keyframes glitch-offset2 {
-            0% { left: 3px; top: 1px; }
-            100% { left: -3px; top: -1px; }
-        }
-
+        /* TOS SCREEN */
         .tos-warning {
             position: fixed;
             top: 0;
@@ -470,6 +473,195 @@
             color: var(--accent-light);
         }
 
+        /* NIGHT SCREEN (твой экран) */
+        .night-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0b0f2a 0%, #1a1f3a 50%, #0f142e 100%);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            z-index: 3000;
+            overflow: hidden;
+        }
+
+        .night-screen.visible {
+            display: flex;
+        }
+
+        .night-stars {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        .night-star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 3s infinite ease-in-out;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.2; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .night-shooting-star {
+            position: absolute;
+            width: 100px;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.8), transparent);
+            transform: rotate(-45deg);
+            animation: shoot 4s infinite linear;
+            opacity: 0;
+        }
+
+        @keyframes shoot {
+            0% {
+                transform: translateX(0) translateY(0) rotate(-45deg);
+                opacity: 1;
+            }
+            70% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateX(-500px) translateY(500px) rotate(-45deg);
+                opacity: 0;
+            }
+        }
+
+        .night-moon {
+            position: absolute;
+            top: 50px;
+            right: 50px;
+            width: 60px;
+            height: 60px;
+            background: #f0f0f0;
+            border-radius: 50%;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.3);
+            z-index: 1;
+        }
+
+        .night-moon::before {
+            content: '';
+            position: absolute;
+            top: 5px;
+            left: 10px;
+            width: 20px;
+            height: 20px;
+            background: #ddd;
+            border-radius: 50%;
+            opacity: 0.5;
+        }
+
+        .night-cloud {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 100px;
+            filter: blur(20px);
+            z-index: 0;
+        }
+
+        .night-cloud1 {
+            width: 300px;
+            height: 80px;
+            bottom: 100px;
+            left: -50px;
+            animation: drift 20s infinite linear;
+        }
+
+        .night-cloud2 {
+            width: 400px;
+            height: 100px;
+            top: 150px;
+            right: -100px;
+            animation: drift 25s infinite linear reverse;
+        }
+
+        @keyframes drift {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(200px); }
+        }
+
+        .night-content {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: 100vh;
+        }
+
+        .night-closed {
+            font-size: 48px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            margin-bottom: 30px;
+            color: #d9d9d9;
+            text-align: center;
+            width: 100%;
+        }
+
+        .night-message {
+            font-size: 18px;
+            color: rgba(189, 189, 189, 0.9);
+            margin-bottom: 50px;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            backdrop-filter: blur(5px);
+            padding: 15px 30px;
+            border-radius: 40px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            text-align: center;
+            width: fit-content;
+            min-width: 200px;
+            max-width: 90%;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.5;
+        }
+
+        .night-button {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            padding: 16px 40px;
+            color: rgb(221, 221, 221);
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: fit-content;
+            margin: 0 auto;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .night-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        /* MAIN APP */
         .app {
             height: 100vh;
             display: none;
@@ -795,6 +987,7 @@
     </style>
 </head>
 <body>
+    <!-- SPLASH SCREEN -->
     <div class="splash-screen" id="splash">
         <div class="av-container">
             <span class="av-letter letter-a" data-letter="A">A</span>
@@ -802,6 +995,7 @@
         </div>
     </div>
 
+    <!-- BANNED SCREEN -->
     <div class="banned-screen" id="bannedScreen">
         <div class="banned-icon">
             <svg viewBox="0 0 24 24">
@@ -813,10 +1007,27 @@
         <div class="banned-title">BANNED</div>
         <div class="banned-message">ваш аккаунт был заблокирован</div>
         <div class="banned-time" id="banTime">1 день</div>
-        <button class="banned-button" id="closeBannedBtn">Close app</button>
+        <button class="banned-button" id="closeBannedBtn">CLOSE APP</button>
         <a class="banned-link" id="rulesLink">Правила пользования</a>
     </div>
 
+    <!-- NIGHT SCREEN (твой экран) -->
+    <div class="night-screen" id="nightScreen">
+        <div class="night-stars" id="nightStars"></div>
+        <div class="night-shooting-star" style="top: 20%; left: 80%; animation-delay: 2s;"></div>
+        <div class="night-shooting-star" style="top: 40%; left: 90%; animation-delay: 5s;"></div>
+        <div class="night-shooting-star" style="top: 60%; left: 70%; animation-delay: 8s;"></div>
+        <div class="night-moon"></div>
+        <div class="night-cloud night-cloud1"></div>
+        <div class="night-cloud night-cloud2"></div>
+        <div class="night-content">
+            <div class="night-closed">CLOSED</div>
+            <div class="night-message" id="nightMessage">Работа приостановлена администратором</div>
+            <button class="night-button" id="closeNightBtn">CLOSE APP</button>
+        </div>
+    </div>
+
+    <!-- TOS WARNING SCREEN -->
     <div class="tos-warning" id="tosWarning">
         <div class="tos-icon">
             <svg viewBox="0 0 24 24">
@@ -832,9 +1043,10 @@
             <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" style="color: var(--accent-light);">Условия использования</a>.<br><br>
             Вернитесь в чат с ботом и нажмите кнопку "Я принимаю условия".
         </div>
-        <button class="tos-button" id="closeAppBtn">Close app</button>
+        <button class="tos-button" id="closeAppBtn">CLOSE APP</button>
     </div>
 
+    <!-- MAIN APP -->
     <div class="app" id="app">
         <div class="script-required">
             <span id="userName"></span>
@@ -888,12 +1100,14 @@
             let authFinished = false;
             let authResult = null;
             let bannedInfo = null;
+            let banTimerInterval = null;
             
             const tg = window.Telegram.WebApp;
             const splash = document.getElementById('splash');
             const tosWarning = document.getElementById('tosWarning');
             const app = document.getElementById('app');
             const bannedScreen = document.getElementById('bannedScreen');
+            const nightScreen = document.getElementById('nightScreen');
             
             tg.expand();
             tg.setHeaderColor('#232323');
@@ -902,6 +1116,7 @@
             tosWarning.classList.remove('visible');
             app.classList.remove('visible');
             bannedScreen.classList.remove('visible');
+            nightScreen.classList.remove('visible');
             
             function getDaysText(days) {
                 if (days === 1) return '1 день';
@@ -927,7 +1142,38 @@
                 splash.style.display = 'none';
                 tosWarning.classList.remove('visible');
                 app.classList.remove('visible');
+                nightScreen.classList.remove('visible');
                 bannedScreen.classList.add('visible');
+            }
+
+            function showNightScreen(message) {
+                document.getElementById('nightMessage').textContent = message || 'Работа приостановлена администратором';
+                splash.style.display = 'none';
+                tosWarning.classList.remove('visible');
+                app.classList.remove('visible');
+                bannedScreen.classList.remove('visible');
+                nightScreen.classList.add('visible');
+            }
+
+            function createNightStars() {
+                const starsContainer = document.getElementById('nightStars');
+                for (let i = 0; i < 150; i++) {
+                    const star = document.createElement('div');
+                    star.className = 'night-star';
+                    
+                    const size = Math.random() * 3 + 1;
+                    const x = Math.random() * 100;
+                    const y = Math.random() * 100;
+                    const delay = Math.random() * 3;
+                    
+                    star.style.width = size + 'px';
+                    star.style.height = size + 'px';
+                    star.style.left = x + '%';
+                    star.style.top = y + '%';
+                    star.style.animationDelay = delay + 's';
+                    
+                    starsContainer.appendChild(star);
+                }
             }
 
             function startAnimation() {
@@ -954,11 +1200,22 @@
             
             function tryShowScreen() {
                 if (!animationFinished || !authFinished) return;
+
+                // ПРИОРИТЕТ 1: Бот закрыт (показываем ночной экран)
+                if (authResult && !authResult.ok && authResult.error === 'night_mode') {
+                    showNightScreen(authResult.message);
+                    return;
+                }
+
+                // ПРИОРИТЕТ 2: Пользователь забанен
                 if (authResult && !authResult.ok && authResult.error === 'banned' && authResult.ban_info) {
                     showBannedScreen(authResult.ban_info);
                     return;
                 }
+                
                 splash.style.display = 'none';
+                
+                // ПРИОРИТЕТ 3: Проверка ToS
                 if (authResult && authResult.ok && authResult.user && authResult.user.accepted_tos === true) {
                     window.userData = authResult.user;
                     window.tg = tg;
@@ -993,6 +1250,12 @@
                         },
                         body: JSON.stringify({ initData })
                     });
+                    
+                    if (response.status === 503) {
+                        const errorData = await response.json();
+                        return { ok: false, ...errorData };
+                    }
+                    
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
                         return { ok: false, ...errorData, status: response.status };
@@ -1008,6 +1271,15 @@
                     const response = await fetch('/api/messages/inbox', {
                         headers: { 'X-Telegram-Init-Data': initData }
                     });
+                    
+                    if (response.status === 503) {
+                        const errorData = await response.json();
+                        if (errorData.error === 'night_mode') {
+                            showNightScreen(errorData.message);
+                            return;
+                        }
+                    }
+                    
                     if (response.status === 403) {
                         const errorData = await response.json();
                         if (errorData.error === 'banned' && errorData.ban_info) {
@@ -1015,11 +1287,13 @@
                             return;
                         }
                     }
+                    
                     if (!response.ok) {
                         console.error('Inbox response not OK:', response.status);
                         displayInboxMessages([]);
                         return;
                     }
+                    
                     const data = await response.json();
                     displayInboxMessages(data.messages || []);
                 } catch (error) {
@@ -1033,6 +1307,15 @@
                     const response = await fetch('/api/messages/sent', {
                         headers: { 'X-Telegram-Init-Data': initData }
                     });
+                    
+                    if (response.status === 503) {
+                        const errorData = await response.json();
+                        if (errorData.error === 'night_mode') {
+                            showNightScreen(errorData.message);
+                            return;
+                        }
+                    }
+                    
                     if (response.status === 403) {
                         const errorData = await response.json();
                         if (errorData.error === 'banned' && errorData.ban_info) {
@@ -1040,11 +1323,13 @@
                             return;
                         }
                     }
+                    
                     if (!response.ok) {
                         console.error('Sent response not OK:', response.status);
                         displaySentMessages([]);
                         return;
                     }
+                    
                     const data = await response.json();
                     displaySentMessages(data.messages || []);
                 } catch (error) {
@@ -1072,6 +1357,15 @@
                             text: text
                         })
                     });
+                    
+                    if (response.status === 503) {
+                        const errorData = await response.json();
+                        if (errorData.error === 'night_mode') {
+                            showNightScreen(errorData.message);
+                            return;
+                        }
+                    }
+                    
                     const result = await response.json();
                     if (!response.ok) {
                         if (result.error === 'banned' && result.ban_info) {
@@ -1259,11 +1553,18 @@
             }
 
             document.getElementById('closeBannedBtn').addEventListener('click', () => {
-                if (tg) {
-                    tg.close();
-                } else {
-                    window.close();
-                }
+                if (tg) tg.close();
+                else window.close();
+            });
+
+            document.getElementById('closeNightBtn').addEventListener('click', () => {
+                if (tg) tg.close();
+                else window.close();
+            });
+
+            document.getElementById('closeAppBtn').addEventListener('click', () => {
+                if (tg) tg.close();
+                else window.close();
             });
 
             document.getElementById('rulesLink').addEventListener('click', (e) => {
@@ -1274,15 +1575,8 @@
                     window.open('https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26', '_blank');
                 }
             });
-
-            document.getElementById('closeAppBtn').addEventListener('click', () => {
-                if (tg) {
-                    tg.close();
-                } else {
-                    window.close();
-                }
-            });
             
+            createNightStars();
             startAnimation();
             runAuth();
         })();
