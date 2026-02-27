@@ -463,19 +463,19 @@ class MessageForwardingBot:
         await self.db.save_user(user_id=user.id, username=user.username, first_name=user.first_name, last_name=user.last_name)
         log_user_action("СОХРАНЕНИЕ_ИЗ_СООБЩЕНИЯ", user.id, {'username': user.username, 'first_name': user.first_name})
 
-    async def check_ban_status(self, user_id: int) -> tuple[bool, str]:
+    async def check_ban_status(self, user_id: int) -> tuple[bool, str, Optional[datetime]]:
         user_data = await self.db.get_user(user_id)
         if not user_data or not user_data.get('is_banned'):
-            return False, ""
+            return False, "", None
         ban_until = user_data.get('ban_until')
         if ban_until:
             if hasattr(ban_until, 'tzinfo') and ban_until.tzinfo:
                 ban_until = ban_until.replace(tzinfo=None)
             if datetime.now() > ban_until:
                 await self.db.unban_user(user_id)
-                return False, ""
-            return True, f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
-        return True, "навсегда"
+                return False, "", None
+            return True, user_data.get('ban_reason', 'Причина не указана'), ban_until
+        return True, user_data.get('ban_reason', 'Причина не указана'), None
 
     async def check_rate_limit(self, user_id: int) -> tuple[bool, int]:
         user_data = await self.db.get_user(user_id)
@@ -537,6 +537,19 @@ class MessageForwardingBot:
         @self.router.callback_query(lambda c: c.data == 'accept_tos')
         async def callback_accept_tos(callback_query: CallbackQuery):
             user_id = callback_query.from_user.id
+            
+            # Проверяем бан
+            is_banned, reason, ban_until = await self.check_ban_status(user_id)
+            if is_banned:
+                ban_text = "навсегда"
+                if ban_until:
+                    ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
+                await callback_query.answer(
+                    f"⛔ Вы заблокированы {ban_text}. Причина: {reason}",
+                    show_alert=True
+                )
+                return
+            
             await self.db.accept_tos(user_id)
             await callback_query.answer("✅ Спасибо! Условия приняты. Теперь вы можете пользоваться ботом.", show_alert=True)
             await callback_query.message.delete()
@@ -732,11 +745,84 @@ class MessageForwardingBot:
             else:
                 await message.answer(f"❌ Не удалось удалить пользователя {target_id}.")
 
+        # ========== КОМАНДЫ PRIVACY И TERMS ==========
+        @self.router.message(Command("privacy"))
+        async def cmd_privacy(message: Message):
+            user = message.from_user
+            logger.info(f"/privacy от пользователя {user.id}")
+            
+            # Проверяем бан
+            is_banned, reason, ban_until = await self.check_ban_status(user.id)
+            if is_banned:
+                ban_text = "навсегда"
+                if ban_until:
+                    ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
+                await message.answer(
+                    f"⛔ <b>Доступ заблокирован</b>\n\n"
+                    f"Ваш аккаунт заблокирован {ban_text}.\n"
+                    f"Причина: {reason}\n\n"
+                    f"Для вопросов: @vrsnsky_bot"
+                )
+                return
+            
+            await message.answer(
+                "📄 <b>Политика конфиденциальности</b>\n\n"
+                "Полный текст документа доступен по ссылке:\n"
+                "🔗 https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26",
+                disable_web_page_preview=True
+            )
+
+        @self.router.message(Command("terms"))
+        async def cmd_terms(message: Message):
+            user = message.from_user
+            logger.info(f"/terms от пользователя {user.id}")
+            
+            # Проверяем бан
+            is_banned, reason, ban_until = await self.check_ban_status(user.id)
+            if is_banned:
+                ban_text = "навсегда"
+                if ban_until:
+                    ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
+                await message.answer(
+                    f"⛔ <b>Доступ заблокирован</b>\n\n"
+                    f"Ваш аккаунт заблокирован {ban_text}.\n"
+                    f"Причина: {reason}\n\n"
+                    f"Для вопросов: @vrsnsky_bot"
+                )
+                return
+            
+            await message.answer(
+                "📄 <b>Условия использования</b>\n\n"
+                "Полный текст документа доступен по ссылке:\n"
+                "🔗 https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26",
+                disable_web_page_preview=True
+            )
+
         # ========== ОСНОВНЫЕ КОМАНДЫ ==========
         @self.router.message(CommandStart())
         async def cmd_start(message: Message):
             user = message.from_user
             logger.info(f"/start от пользователя {user.id} (@{user.username})")
+            
+            # Проверяем бан
+            is_banned, reason, ban_until = await self.check_ban_status(user.id)
+            if is_banned:
+                ban_text = "навсегда"
+                if ban_until:
+                    ban_remaining = (ban_until - datetime.now()).total_seconds() // 3600
+                    if ban_remaining < 24:
+                        ban_text = f"через {ban_remaining:.0f} часов" if ban_remaining > 1 else "через 1 час"
+                    else:
+                        days = ban_remaining // 24
+                        ban_text = f"через {days:.0f} дней"
+                await message.answer(
+                    f"⛔ <b>ВЫ ЗАБЛОКИРОВАНЫ</b>\n\n"
+                    f"<b>Причина:</b> {reason}\n"
+                    f"<b>Истекает:</b> {ban_text}\n\n"
+                    f"Если вы считаете, что это ошибка, обратитесь к администратору."
+                )
+                return
+            
             await self.save_user_from_message(message)
             
             has_accepted = await self.db.has_accepted_tos(user.id)
@@ -774,6 +860,19 @@ class MessageForwardingBot:
             user = message.from_user
             logger.info(f"/app от пользователя {user.id}")
             
+            # Проверяем бан
+            is_banned, reason, ban_until = await self.check_ban_status(user.id)
+            if is_banned:
+                ban_text = "навсегда"
+                if ban_until:
+                    ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
+                await message.answer(
+                    f"⛔ <b>Доступ запрещён</b>\n\n"
+                    f"Ваш аккаунт заблокирован {ban_text}.\n"
+                    f"Причина: {reason}"
+                )
+                return
+            
             if not await self.db.has_accepted_tos(user.id):
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text="✅ Принимаю условия", callback_data="accept_tos")
@@ -792,31 +891,66 @@ class MessageForwardingBot:
         async def cmd_help(message: Message):
             user = message.from_user
             logger.info(f"/help от пользователя {user.id}")
-            if await self.db.is_admin(user.id):
+            
+            # Проверяем бан
+            is_banned, reason, ban_until = await self.check_ban_status(user.id)
+            if is_banned:
+                ban_text = "навсегда"
+                if ban_until:
+                    ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
+                await message.answer(
+                    f"⛔ <b>Доступ запрещён</b>\n\n"
+                    f"Ваш аккаунт заблокирован {ban_text}.\n"
+                    f"Причина: {reason}\n\n"
+                    f"Команда /help недоступна заблокированным пользователям."
+                )
+                return
+            
+            # Проверяем ToS для не-админов
+            is_admin = await self.db.is_admin(user.id)
+            if not is_admin and not await self.db.has_accepted_tos(user.id):
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="✅ Принимаю условия", callback_data="accept_tos")
+                ]])
+                await message.answer(
+                    f"Для доступа к справке необходимо принять условия использования. Пожалуйста, выполните команду /start.",
+                    reply_markup=keyboard
+                )
+                return
+            
+            if is_admin:
                 await message.answer(
                     "<b>Доступные команды администратора:</b>\n\n"
+                    "📱 <b>Основные:</b>\n"
                     "• /app - открыть приложение\n"
                     "• /stats - статистика системы\n"
                     "• /users - список пользователей\n"
-                    "• /requests - неотвеченные обращения\n"
-                    "• /get #ID - информация о сообщении\n"
-                    "• /del #ID - удалить сообщение\n"
+                    "• /requests - неотвеченные обращения\n\n"
+                    "📝 <b>Работа с сообщениями:</b>\n"
                     "• #ID текст - ответить на сообщение\n"
+                    "• /get #ID - информация о сообщении\n"
+                    "• /del #ID - удалить сообщение\n\n"
+                    "🔨 <b>Модерация:</b>\n"
                     "• /ban ID причина [часы] - заблокировать\n"
                     "• /unban ID - разблокировать\n"
+                    "• /unset_tos ID - сбросить согласие с условиями\n\n"
+                    "👑 <b>Управление:</b>\n"
                     "• /admin - управление администраторами\n"
-                    "• /send_copy ID - получить копию данных пользователя\n"
-                    "• /unset_tos ID - сбросить согласие с условиями\n"
-                    "• /remove_data ID - удалить все данные пользователя\n"
-                    "• /clear_db_1708 - полная очистка базы данных"
+                    "• /send_copy ID - получить копию данных\n"
+                    "• /remove_data ID - удалить все данные\n"
+                    "• /clear_db_1708 - полная очистка базы данных\n\n"
+                    "📄 <b>Документы:</b>\n"
+                    "• /privacy - политика конфиденциальности\n"
+                    "• /terms - условия использования"
                 )
             else:
                 await message.answer(
                     "<b>Доступные команды:</b>\n\n"
-                    "• /start - начало работы\n"
-                    "• /app - открыть приложение\n"
-                    "• /help - справка\n\n"
-                    "Для отправки сообщений используйте приложение."
+                    "📱 /app - открыть приложение для отправки сообщений\n"
+                    "📄 /privacy - политика конфиденциальности\n"
+                    "📄 /terms - условия использования\n"
+                    "❓ /help - эта справка\n\n"
+                    "<i>Для отправки сообщений используйте кнопку «Открыть приложение» или команду /app</i>"
                 )
 
         @self.router.message(Command("stats"))
@@ -881,6 +1015,29 @@ class MessageForwardingBot:
                 if hours and (hours <= 0 or hours > MAX_BAN_HOURS):
                     return await message.answer(f"❌ Количество часов должно быть от 1 до {MAX_BAN_HOURS}.")
                 ban_until = datetime.now() + timedelta(hours=hours) if hours else None
+                
+                # Отправляем уведомление пользователю о блокировке
+                try:
+                    ban_text = f"на {hours} ч." if hours else "навсегда"
+                    if hours:
+                        ban_until_str = ban_until.strftime('%d.%m.%Y %H:%M')
+                        await self.bot.send_message(
+                            peer_id,
+                            f"⛔ <b>ВЫ ЗАБЛОКИРОВАНЫ</b>\n\n"
+                            f"<b>Причина:</b> {reason}\n"
+                            f"<b>Блокировка истечет:</b> {ban_until_str}\n\n"
+                            f"До истечения срока вы не можете пользоваться ботом."
+                        )
+                    else:
+                        await self.bot.send_message(
+                            peer_id,
+                            f"⛔ <b>ВЫ ЗАБЛОКИРОВАНЫ НАВСЕГДА</b>\n\n"
+                            f"<b>Причина:</b> {reason}\n\n"
+                            f"Для вопросов обратитесь к администратору."
+                        )
+                except Exception as e:
+                    logger.error(f"Не удалось отправить уведомление о бане пользователю {peer_id}: {e}")
+                
                 await self.db.ban_user(peer_id, reason, ban_until)
                 await self.db.update_stats(bans_issued=1)
                 ban_duration = f"на {hours} ч." if hours else "навсегда"
@@ -898,6 +1055,18 @@ class MessageForwardingBot:
                 if len(args) < 1:
                     return await message.answer("❌ Использование: /unban ID")
                 peer_id = int(args[0])
+                
+                # Отправляем уведомление пользователю о разблокировке
+                try:
+                    await self.bot.send_message(
+                        peer_id,
+                        f"✅ <b>ВЫ РАЗБЛОКИРОВАНЫ</b>\n\n"
+                        f"Блокировка снята. Теперь вы снова можете пользоваться ботом.\n\n"
+                        f"Для начала работы выполните команду /start"
+                    )
+                except Exception as e:
+                    logger.error(f"Не удалось отправить уведомление о разблокировке пользователю {peer_id}: {e}")
+                
                 await self.db.unban_user(peer_id)
                 await message.answer(f"✅ Пользователь {peer_id} разблокирован.")
             except Exception as e:
@@ -1139,6 +1308,19 @@ class MessageForwardingBot:
             user_id = user.id
             is_admin = await self.db.is_admin(user_id)
             
+            # Проверяем бан
+            is_banned, reason, ban_until = await self.check_ban_status(user_id)
+            if is_banned:
+                ban_text = "навсегда"
+                if ban_until:
+                    ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
+                await message.answer(
+                    f"⛔ <b>Доступ запрещён</b>\n\n"
+                    f"Ваш аккаунт заблокирован {ban_text}.\n"
+                    f"Причина: {reason}"
+                )
+                return
+            
             if is_admin:
                 if message.text and message.text.startswith('#'):
                     await self.handle_answer_command(message)
@@ -1188,7 +1370,7 @@ class MessageForwardingBot:
             await message.answer(f"❌ Сообщение #{message_id} не найдено.")
             return
         user_id = original['user_id']
-        is_banned, _ = await self.check_ban_status(user_id)
+        is_banned, reason, ban_until = await self.check_ban_status(user_id)
         if is_banned:
             await message.answer("⛔ Невозможно отправить ответ заблокированному пользователю.")
             return
@@ -1224,12 +1406,15 @@ class MessageForwardingBot:
     async def process_web_app_message(self, user_id: int, text: str):
         user_data = await self.db.get_user(user_id)
         
-        if user_data and user_data.get('is_banned'):
-            ban_until = user_data.get('ban_until')
-            if ban_until and datetime.now() > ban_until.replace(tzinfo=None):
-                await self.db.unban_user(user_id)
-            else:
-                return False, "banned"
+        # Проверка бана
+        is_banned, reason, ban_until = await self.check_ban_status(user_id)
+        if is_banned:
+            ban_info = {
+                'reason': reason,
+                'until': ban_until.isoformat() if ban_until else None,
+                'until_str': ban_until.strftime('%d.%m.%Y %H:%M') if ban_until else 'навсегда'
+            }
+            return False, f"banned:{json.dumps(ban_info)}"
         
         if not await self.db.is_admin(user_id) and not await self.db.has_accepted_tos(user_id):
             return False, "tos_not_accepted"
@@ -1364,15 +1549,26 @@ async def main():
             log_user_action("AUTH", user_id, {'username': user_info.get('username'), 'first_name': user_info.get('first_name')})
 
             user_data = await db.get_user(user_id)
+            
+            # Проверка бана
             is_banned = user_data and user_data.get('is_banned')
+            ban_info = None
             if is_banned:
                 ban_until = user_data.get('ban_until')
                 if ban_until and datetime.now() > ban_until.replace(tzinfo=None):
                     await db.unban_user(user_id)
                     is_banned = False
                 else:
-                    ban_info = {'reason': user_data.get('ban_reason'), 'until': ban_until.isoformat() if ban_until else None}
-                    return web.json_response({'ok': False, 'error': 'banned', 'ban_info': ban_info}, status=403)
+                    ban_info = {
+                        'reason': user_data.get('ban_reason'),
+                        'until': ban_until.isoformat() if ban_until else None,
+                        'until_str': ban_until.strftime('%d.%m.%Y %H:%M') if ban_until else 'навсегда'
+                    }
+                    return web.json_response({
+                        'ok': False, 
+                        'error': 'banned', 
+                        'ban_info': ban_info
+                    }, status=403)
 
             is_admin = await db.is_admin(user_id)
             unanswered = await db.get_unanswered_count(user_id) if not is_admin else 0
@@ -1384,6 +1580,7 @@ async def main():
                     'id': user_id,
                     'is_admin': is_admin,
                     'is_banned': is_banned,
+                    'ban_info': ban_info,
                     'first_name': user_info.get('first_name'),
                     'username': user_info.get('username'),
                     'unanswered': unanswered,
@@ -1413,7 +1610,19 @@ async def main():
             if success:
                 return web.json_response({'ok': True, 'message_id': result})
             else:
-                if isinstance(result, str) and result.startswith('rate_limit:'):
+                if isinstance(result, str) and result.startswith('banned:'):
+                    ban_info_str = result[7:]
+                    try:
+                        ban_info = json.loads(ban_info_str)
+                        return web.json_response({
+                            'ok': False, 
+                            'error': 'banned',
+                            'ban_info': ban_info,
+                            'message': f'Ваш аккаунт заблокирован. Причина: {ban_info["reason"]}. Истекает: {ban_info["until_str"]}'
+                        })
+                    except:
+                        return web.json_response({'ok': False, 'error': 'banned', 'message': 'Ваш аккаунт заблокирован'})
+                elif isinstance(result, str) and result.startswith('rate_limit:'):
                     minutes = result.split(':')[1]
                     return web.json_response({
                         'ok': False, 
@@ -1426,12 +1635,6 @@ async def main():
                         'ok': False,
                         'error': 'tos_not_accepted',
                         'message': 'Необходимо принять условия использования в боте. Выполните команду /start'
-                    })
-                elif result == 'banned':
-                    return web.json_response({
-                        'ok': False,
-                        'error': 'banned',
-                        'message': 'Ваш аккаунт заблокирован. Обратитесь к администратору.'
                     })
                 else:
                     return web.json_response({'ok': False, 'error': result})
@@ -1450,6 +1653,16 @@ async def main():
             user_id = user_info.get('id')
             if not user_id:
                 return web.json_response({'error': 'ID пользователя не найден'}, status=400)
+            
+            # Проверка бана
+            is_banned, reason, ban_until = await bot.check_ban_status(user_id)
+            if is_banned:
+                return web.json_response({'error': 'banned', 'ban_info': {
+                    'reason': reason,
+                    'until': ban_until.isoformat() if ban_until else None,
+                    'until_str': ban_until.strftime('%d.%m.%Y %H:%M') if ban_until else 'навсегда'
+                }}, status=403)
+            
             messages = await db.get_user_inbox(user_id)
             for m in messages:
                 if m.get('answered_at') and hasattr(m['answered_at'], 'isoformat'):
@@ -1470,6 +1683,16 @@ async def main():
             user_id = user_info.get('id')
             if not user_id:
                 return web.json_response({'error': 'ID пользователя не найден'}, status=400)
+            
+            # Проверка бана
+            is_banned, reason, ban_until = await bot.check_ban_status(user_id)
+            if is_banned:
+                return web.json_response({'error': 'banned', 'ban_info': {
+                    'reason': reason,
+                    'until': ban_until.isoformat() if ban_until else None,
+                    'until_str': ban_until.strftime('%d.%m.%Y %H:%M') if ban_until else 'навсегда'
+                }}, status=403)
+            
             messages = await db.get_user_sent(user_id)
             for m in messages:
                 if m.get('forwarded_at') and hasattr(m['forwarded_at'], 'isoformat'):
