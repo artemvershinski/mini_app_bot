@@ -23,6 +23,10 @@ APP_URL = os.getenv("APP_URL", "https://mini-app-bot-lzya.onrender.com")
 PORT = int(os.getenv("PORT", 10000))
 MESSAGE_ID_START = 100569
 
+# ==================== Bot State ====================
+BOT_CLOSED = False
+BOT_CLOSED_MESSAGE = ""
+
 # ==================== Logging ====================
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 logging.basicConfig(
@@ -180,7 +184,6 @@ class Database:
             return result.split()[1] == '1'
 
     async def unset_tos(self, user_id: int) -> bool:
-        """Сбрасывает согласие пользователя с условиями."""
         async with self.pool.acquire() as conn:
             result = await conn.execute('UPDATE users SET accepted_tos = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1', user_id)
             return result.split()[1] == '1'
@@ -505,11 +508,11 @@ class MessageForwardingBot:
             content_preview = "\nСтикер"
 
         text = (
-            f"📩 <b>Новое сообщение #{message_id}</b>\n"
-            f"<b>Отправитель:</b> {self.get_user_info_with_id(user_data)}\n"
-            f"<b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+            f"Новое сообщение #{message_id}\n"
+            f"Отправитель: {self.get_user_info_with_id(user_data)}\n"
+            f"Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
             f"{content_preview}\n\n"
-            f"<i>Для ответа используйте: #ID текст</i>"
+            f"Для ответа используйте: #ID текст"
         )
         admins = await self.db.get_admins()
         success_count = 0
@@ -536,7 +539,16 @@ class MessageForwardingBot:
         
         @self.router.callback_query(lambda c: c.data == 'accept_tos')
         async def callback_accept_tos(callback_query: CallbackQuery):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user_id = callback_query.from_user.id
+            
+            if BOT_CLOSED:
+                await callback_query.answer(
+                    f"Приложение закрыто администратором. {BOT_CLOSED_MESSAGE}",
+                    show_alert=True
+                )
+                return
             
             # Проверяем бан
             is_banned, reason, ban_until = await self.check_ban_status(user_id)
@@ -545,105 +557,173 @@ class MessageForwardingBot:
                 if ban_until:
                     ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
                 await callback_query.answer(
-                    f"⛔ Вы заблокированы {ban_text}. Причина: {reason}",
+                    f"Вы заблокированы {ban_text}. Причина: {reason}",
                     show_alert=True
                 )
                 return
             
             await self.db.accept_tos(user_id)
-            await callback_query.answer("✅ Спасибо! Условия приняты. Теперь вы можете пользоваться ботом.", show_alert=True)
+            await callback_query.answer("Спасибо! Условия приняты. Теперь вы можете пользоваться ботом.", show_alert=True)
             await callback_query.message.delete()
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))
+                InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=APP_URL))
             ]])
             user = callback_query.from_user
             await callback_query.message.answer(
                 f"Уважаемый пользователь, {user.first_name or ''}.\n\n"
-                f"Данный бот предназначен для направления обращений администратору.\n\n"
+                f"Данный бот предназначен для направления сообщений администратору.\n\n"
                 f"Для отправки сообщения используйте кнопку ниже.\n"
                 f"Лимит отправки: {RATE_LIMIT_MINUTES} минут между сообщениями.",
                 reply_markup=keyboard
             )
             log_user_action("ПРИНЯТИЕ_TOS", user.id, {'username': user.username, 'first_name': user.first_name})
 
+        # ========== КОМАНДЫ ДЛЯ ЗАКРЫТИЯ/ОТКРЫТИЯ БОТА ==========
+        @self.router.message(Command("close"))
+        async def cmd_close_bot(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
+            user = message.from_user
+            if not await self.db.is_admin(user.id):
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
+            
+            text = message.text.replace("/close", "").strip()
+            if not text:
+                return await message.answer("Укажите сообщение для пользователей: /close текст")
+            
+            BOT_CLOSED = True
+            BOT_CLOSED_MESSAGE = text
+            
+            await message.answer(
+                f"Бот закрыт для пользователей\n"
+                f"Сообщение: {text}"
+            )
+            
+            # Оповещение других админов
+            admin_name = self.get_user_info(await self.db.get_user(user.id))
+            await self.notify_admins(
+                f"Администратор {admin_name} закрыл бота для пользователей\nСообщение: {text}",
+                exclude_user_id=user.id
+            )
+
+        @self.router.message(Command("open"))
+        async def cmd_open_bot(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
+            user = message.from_user
+            if not await self.db.is_admin(user.id):
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
+            
+            BOT_CLOSED = False
+            BOT_CLOSED_MESSAGE = ""
+            
+            await message.answer("Бот открыт для пользователей")
+            
+            # Оповещение других админов
+            admin_name = self.get_user_info(await self.db.get_user(user.id))
+            await self.notify_admins(
+                f"Администратор {admin_name} открыл бота для пользователей",
+                exclude_user_id=user.id
+            )
+
         # ========== КОМАНДА ДЛЯ СБРОСА СОГЛАСИЯ TOS ==========
         @self.router.message(Command("unset_tos"))
         async def cmd_unset_tos(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             args = message.text.split()
             if len(args) < 2:
-                return await message.answer("❌ Использование: /unset_tos userID")
+                return await message.answer("Использование: /unset_tos userID")
             
             try:
                 target_id = int(args[1])
             except ValueError:
-                return await message.answer("❌ Некорректный идентификатор пользователя.")
+                return await message.answer("Некорректный идентификатор пользователя.")
             
             # Проверяем существование пользователя
             user_data = await self.db.get_user(target_id)
             if not user_data:
-                return await message.answer(f"❌ Пользователь с идентификатором {target_id} не найден.")
+                return await message.answer(f"Пользователь с идентификатором {target_id} не найден.")
             
             # Проверяем, принял ли вообще ToS
             if not await self.db.has_accepted_tos(target_id):
-                return await message.answer(f"ℹ️ Пользователь {target_id} еще не принимал условия использования.")
+                return await message.answer(f"Пользователь {target_id} еще не принимал условия использования.")
             
             # Сбрасываем согласие
             success = await self.db.unset_tos(target_id)
             if success:
-                await message.answer(f"✅ Согласие с условиями использования для пользователя {target_id} сброшено.")
+                await message.answer(f"Согласие с условиями использования для пользователя {target_id} сброшено.")
                 logger.info(f"Администратор {user.id} сбросил ToS для пользователя {target_id}")
                 
                 # Оповещаем других админов
                 admin_name = self.get_user_info(await self.db.get_user(user.id))
                 target_name = self.get_user_info(user_data)
                 await self.notify_admins(
-                    f"🔄 Администратор {admin_name} сбросил согласие с условиями для пользователя {target_name}",
+                    f"Администратор {admin_name} сбросил согласие с условиями для пользователя {target_name}",
                     exclude_user_id=user.id
                 )
             else:
-                await message.answer(f"❌ Не удалось сбросить согласие для пользователя {target_id}.")
+                await message.answer(f"Не удалось сбросить согласие для пользователя {target_id}.")
 
         # ========== КОМАНДА ДЛЯ ОТПРАВКИ КОПИИ ДАННЫХ ==========
         @self.router.message(Command("send_copy"))
         async def cmd_send_copy(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             args = message.text.split()
             if len(args) < 2:
-                return await message.answer("❌ Использование: /send_copy userID")
+                return await message.answer("Использование: /send_copy userID")
             
             try:
                 target_id = int(args[1])
             except ValueError:
-                return await message.answer("❌ Некорректный идентификатор пользователя.")
+                return await message.answer("Некорректный идентификатор пользователя.")
             
             user_data = await self.db.get_user_full_data(target_id)
             if not user_data:
-                return await message.answer(f"❌ Пользователь с идентификатором {target_id} не найден.")
+                return await message.answer(f"Пользователь с идентификатором {target_id} не найден.")
             
-            text = f"📋 <b>Данные пользователя ID: {target_id}</b>\n\n"
-            text += f"👤 <b>Username:</b> @{user_data.get('username', 'отсутствует')}\n"
-            text += f"📝 <b>Имя:</b> {user_data.get('first_name', 'отсутствует')} {user_data.get('last_name', '')}\n"
-            text += f"📅 <b>Дата регистрации:</b> {user_data['created_at'].strftime('%d.%m.%Y %H:%M') if user_data['created_at'] else 'N/A'}\n"
-            text += f"💬 <b>Сообщений отправлено:</b> {user_data.get('messages_sent', 0)}\n"
-            text += f"📨 <b>Неотвеченных:</b> {user_data['unanswered_count']}\n"
-            text += f"✅ <b>Согласие с условиями:</b> {'Да' if user_data.get('accepted_tos') else 'Нет'}\n"
-            text += f"🚫 <b>Заблокирован:</b> {'Да' if user_data.get('is_banned') else 'Нет'}\n"
+            text = f"Данные пользователя ID: {target_id}\n\n"
+            text += f"Username: @{user_data.get('username', 'отсутствует')}\n"
+            text += f"Имя: {user_data.get('first_name', 'отсутствует')} {user_data.get('last_name', '')}\n"
+            text += f"Дата регистрации: {user_data['created_at'].strftime('%d.%m.%Y %H:%M') if user_data['created_at'] else 'N/A'}\n"
+            text += f"Сообщений отправлено: {user_data.get('messages_sent', 0)}\n"
+            text += f"Неотвеченных: {user_data['unanswered_count']}\n"
+            text += f"Согласие с условиями: {'Да' if user_data.get('accepted_tos') else 'Нет'}\n"
+            text += f"Заблокирован: {'Да' if user_data.get('is_banned') else 'Нет'}\n"
             if user_data.get('is_banned'):
-                text += f"   <b>Причина:</b> {user_data.get('ban_reason', 'не указана')}\n"
+                text += f"   Причина: {user_data.get('ban_reason', 'не указана')}\n"
                 if user_data.get('ban_until'):
-                    text += f"   <b>До:</b> {user_data['ban_until'].strftime('%d.%m.%Y %H:%M')}\n"
+                    text += f"   До: {user_data['ban_until'].strftime('%d.%m.%Y %H:%M')}\n"
             
             await message.answer(text)
             
             if user_data['messages']:
-                msgs_text = "📬 <b>История сообщений:</b>\n\n"
+                msgs_text = "История сообщений:\n\n"
                 for i, msg in enumerate(user_data['messages'][:10], 1):
                     status = "✅" if msg['is_answered'] else "⏳"
                     date = msg['forwarded_at'].strftime('%d.%m %H:%M') if msg['forwarded_at'] else 'N/A'
@@ -651,35 +731,45 @@ class MessageForwardingBot:
                     msgs_text += f"   {msg['text'][:100]}{'...' if len(msg['text']) > 100 else ''}\n\n"
                 
                 if len(user_data['messages']) > 10:
-                    msgs_text += f"<i>... и ещё {len(user_data['messages']) - 10} сообщений</i>"
+                    msgs_text += f"... и ещё {len(user_data['messages']) - 10} сообщений"
                 
                 await message.answer(msgs_text)
             else:
-                await message.answer("📭 У пользователя нет сообщений.")
+                await message.answer("У пользователя нет сообщений.")
             
             logger.info(f"Администратор {user.id} запросил копию данных пользователя {target_id}")
 
         @self.router.message(Command("remove_data"))
         async def cmd_remove_data(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             args = message.text.split()
             if len(args) < 2:
-                return await message.answer("❌ Использование: /remove_data userID")
+                return await message.answer("Использование: /remove_data userID")
             
             try:
                 target_id = int(args[1])
             except ValueError:
-                return await message.answer("❌ Некорректный идентификатор пользователя.")
+                return await message.answer("Некорректный идентификатор пользователя.")
             
             user_data = await self.db.get_user(target_id)
             if not user_data:
-                return await message.answer(f"❌ Пользователь с идентификатором {target_id} не найден.")
+                return await message.answer(f"Пользователь с идентификатором {target_id} не найден.")
             
             if await self.db.is_admin(target_id) and target_id != OWNER_ID:
-                return await message.answer("⛔ Невозможно удалить данные администратора.")
+                return await message.answer("Невозможно удалить данные администратора.")
             
             confirm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
             self.db.remove_data_confirmations[f"remove_{user.id}_{target_id}"] = {
@@ -689,66 +779,86 @@ class MessageForwardingBot:
             }
             
             await message.answer(
-                f"⚠️ <b>ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ</b>\n\n"
+                f"ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ\n\n"
                 f"Вы собираетесь полностью удалить пользователя ID: {target_id}\n"
                 f"Будут безвозвратно удалены:\n"
-                f"• Все сообщения пользователя\n"
-                f"• Профиль пользователя\n"
-                f"• История переписки\n\n"
-                f"Данное действие <b>необратимо</b>.\n\n"
+                f"Все сообщения пользователя\n"
+                f"Профиль пользователя\n"
+                f"История переписки\n\n"
+                f"Данное действие необратимо.\n\n"
                 f"Для подтверждения отправьте следующий код в течение 5 минут:\n"
-                f"<code>{confirm_code}</code>\n\n"
-                f"<i>Команда: /confirm_remove {target_id} {confirm_code}</i>"
+                f"{confirm_code}\n\n"
+                f"Команда: /confirm_remove {target_id} {confirm_code}"
             )
 
         @self.router.message(Command("confirm_remove"))
         async def cmd_confirm_remove(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             args = message.text.split()
             if len(args) < 3:
-                return await message.answer("❌ Использование: /confirm_remove ID КОД")
+                return await message.answer("Использование: /confirm_remove ID КОД")
             
             try:
                 target_id = int(args[1])
                 code = args[2].strip()
             except ValueError:
-                return await message.answer("❌ Некорректный идентификатор.")
+                return await message.answer("Некорректный идентификатор.")
             
             confirm_key = f"remove_{user.id}_{target_id}"
             confirm_data = self.db.remove_data_confirmations.get(confirm_key)
             
             if not confirm_data:
-                return await message.answer("❌ Не найден активный запрос на удаление данного пользователя.")
+                return await message.answer("Не найден активный запрос на удаление данного пользователя.")
             
             if datetime.now() > confirm_data['expires']:
                 del self.db.remove_data_confirmations[confirm_key]
-                return await message.answer("❌ Время подтверждения истекло. Запросите удаление повторно.")
+                return await message.answer("Время подтверждения истекло. Запросите удаление повторно.")
             
             if code != confirm_data['code']:
-                return await message.answer("❌ Неверный код подтверждения.")
+                return await message.answer("Неверный код подтверждения.")
             
             deleted = await self.db.delete_all_user_data(target_id)
             
             if deleted:
                 del self.db.remove_data_confirmations[confirm_key]
-                await message.answer(f"✅ Пользователь {target_id} и все связанные с ним данные полностью удалены.")
+                await message.answer(f"Пользователь {target_id} и все связанные с ним данные полностью удалены.")
                 logger.info(f"Администратор {user.id} полностью удалил данные пользователя {target_id}")
                 
                 admin_name = self.get_user_info(await self.db.get_user(user.id))
                 await self.notify_admins(
-                    f"🗑 Администратор {admin_name} полностью удалил пользователя {target_id} и все его данные.",
+                    f"Администратор {admin_name} полностью удалил пользователя {target_id} и все его данные.",
                     exclude_user_id=user.id
                 )
             else:
-                await message.answer(f"❌ Не удалось удалить пользователя {target_id}.")
+                await message.answer(f"Не удалось удалить пользователя {target_id}.")
 
         # ========== КОМАНДЫ PRIVACY И TERMS ==========
         @self.router.message(Command("privacy"))
         async def cmd_privacy(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             logger.info(f"/privacy от пользователя {user.id}")
             
             # Проверяем бан
@@ -758,7 +868,7 @@ class MessageForwardingBot:
                 if ban_until:
                     ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
                 await message.answer(
-                    f"⛔ <b>Доступ заблокирован</b>\n\n"
+                    f"Доступ заблокирован\n\n"
                     f"Ваш аккаунт заблокирован {ban_text}.\n"
                     f"Причина: {reason}\n\n"
                     f"Для вопросов: @vrsnsky_bot"
@@ -766,15 +876,25 @@ class MessageForwardingBot:
                 return
             
             await message.answer(
-                "📄 <b>Политика конфиденциальности</b>\n\n"
-                "Полный текст документа доступен по ссылке:\n"
-                "🔗 https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26",
+                f"Политика конфиденциальности\n\n"
+                f"Полный текст документа доступен по ссылке:\n"
+                f"https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26",
                 disable_web_page_preview=True
             )
 
         @self.router.message(Command("terms"))
         async def cmd_terms(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             logger.info(f"/terms от пользователя {user.id}")
             
             # Проверяем бан
@@ -784,7 +904,7 @@ class MessageForwardingBot:
                 if ban_until:
                     ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
                 await message.answer(
-                    f"⛔ <b>Доступ заблокирован</b>\n\n"
+                    f"Доступ заблокирован\n\n"
                     f"Ваш аккаунт заблокирован {ban_text}.\n"
                     f"Причина: {reason}\n\n"
                     f"Для вопросов: @vrsnsky_bot"
@@ -792,16 +912,26 @@ class MessageForwardingBot:
                 return
             
             await message.answer(
-                "📄 <b>Условия использования</b>\n\n"
-                "Полный текст документа доступен по ссылке:\n"
-                "🔗 https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26",
+                f"Условия использования\n\n"
+                f"Полный текст документа доступен по ссылке:\n"
+                f"https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26",
                 disable_web_page_preview=True
             )
 
         # ========== ОСНОВНЫЕ КОМАНДЫ ==========
         @self.router.message(CommandStart())
         async def cmd_start(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             logger.info(f"/start от пользователя {user.id} (@{user.username})")
             
             # Проверяем бан
@@ -816,9 +946,9 @@ class MessageForwardingBot:
                         days = ban_remaining // 24
                         ban_text = f"через {days:.0f} дней"
                 await message.answer(
-                    f"⛔ <b>ВЫ ЗАБЛОКИРОВАНЫ</b>\n\n"
-                    f"<b>Причина:</b> {reason}\n"
-                    f"<b>Истекает:</b> {ban_text}\n\n"
+                    f"ВЫ ЗАБЛОКИРОВАНЫ\n\n"
+                    f"Причина: {reason}\n"
+                    f"Истекает: {ban_text}\n\n"
                     f"Если вы считаете, что это ошибка, обратитесь к администратору."
                 )
                 return
@@ -829,21 +959,21 @@ class MessageForwardingBot:
             
             if not has_accepted:
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Принимаю условия", callback_data="accept_tos")
+                    InlineKeyboardButton(text="Принимаю условия", callback_data="accept_tos")
                 ]])
                 
                 await message.answer(
                     f"Уважаемый пользователь, {user.first_name or ''}.\n\n"
                     f"Для использования функционала бота необходимо принять условия:\n\n"
-                    f"📄 <a href='https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26'>Политика конфиденциальности</a>\n"
-                    f"📄 <a href='https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26'>Условия использования</a>\n\n"
+                    f"Политика конфиденциальности: https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26\n"
+                    f"Условия использования: https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26\n\n"
                     f"Нажимая кнопку «Принимаю условия», вы подтверждаете ознакомление и согласие с указанными документами.",
                     reply_markup=keyboard,
                     disable_web_page_preview=True
                 )
                 return
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
             await message.answer(
                 f"Уважаемый пользователь, {message.from_user.first_name or ''}.\n\n"
                 f"Данный бот предназначен для направления обращений администратору.\n\n"
@@ -857,7 +987,17 @@ class MessageForwardingBot:
 
         @self.router.message(Command("app"))
         async def cmd_app(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             logger.info(f"/app от пользователя {user.id}")
             
             # Проверяем бан
@@ -867,7 +1007,7 @@ class MessageForwardingBot:
                 if ban_until:
                     ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
                 await message.answer(
-                    f"⛔ <b>Доступ запрещён</b>\n\n"
+                    f"Доступ запрещён\n\n"
                     f"Ваш аккаунт заблокирован {ban_text}.\n"
                     f"Причина: {reason}"
                 )
@@ -875,7 +1015,7 @@ class MessageForwardingBot:
             
             if not await self.db.has_accepted_tos(user.id):
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Принимаю условия", callback_data="accept_tos")
+                    InlineKeyboardButton(text="Принимаю условия", callback_data="accept_tos")
                 ]])
                 await message.answer(
                     f"Для доступа к приложению необходимо принять условия использования. Пожалуйста, выполните команду /start.",
@@ -883,13 +1023,23 @@ class MessageForwardingBot:
                 )
                 return
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
             await message.answer("Для перехода в приложение нажмите кнопку ниже.", reply_markup=keyboard)
             log_user_action("APP_COMMAND", user.id, {'username': user.username, 'first_name': user.first_name})
 
         @self.router.message(Command("help"))
         async def cmd_help(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             logger.info(f"/help от пользователя {user.id}")
             
             # Проверяем бан
@@ -899,7 +1049,7 @@ class MessageForwardingBot:
                 if ban_until:
                     ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
                 await message.answer(
-                    f"⛔ <b>Доступ запрещён</b>\n\n"
+                    f"Доступ запрещён\n\n"
                     f"Ваш аккаунт заблокирован {ban_text}.\n"
                     f"Причина: {reason}\n\n"
                     f"Команда /help недоступна заблокированным пользователям."
@@ -910,7 +1060,7 @@ class MessageForwardingBot:
             is_admin = await self.db.is_admin(user.id)
             if not is_admin and not await self.db.has_accepted_tos(user.id):
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Принимаю условия", callback_data="accept_tos")
+                    InlineKeyboardButton(text="Принимаю условия", callback_data="accept_tos")
                 ]])
                 await message.answer(
                     f"Для доступа к справке необходимо принять условия использования. Пожалуйста, выполните команду /start.",
@@ -920,42 +1070,55 @@ class MessageForwardingBot:
             
             if is_admin:
                 await message.answer(
-                    "<b>Доступные команды администратора:</b>\n\n"
-                    "📱 <b>Основные:</b>\n"
-                    "• /app - открыть приложение\n"
-                    "• /stats - статистика системы\n"
-                    "• /users - список пользователей\n"
-                    "• /requests - неотвеченные обращения\n\n"
-                    "📝 <b>Работа с сообщениями:</b>\n"
-                    "• #ID текст - ответить на сообщение\n"
-                    "• /get #ID - информация о сообщении\n"
-                    "• /del #ID - удалить сообщение\n\n"
-                    "🔨 <b>Модерация:</b>\n"
-                    "• /ban ID причина [часы] - заблокировать\n"
-                    "• /unban ID - разблокировать\n"
-                    "• /unset_tos ID - сбросить согласие с условиями\n\n"
-                    "👑 <b>Управление:</b>\n"
-                    "• /admin - управление администраторами\n"
-                    "• /send_copy ID - получить копию данных\n"
-                    "• /remove_data ID - удалить все данные\n"
-                    "• /clear_db_1708 - полная очистка базы данных\n\n"
-                    "📄 <b>Документы:</b>\n"
-                    "• /privacy - политика конфиденциальности\n"
-                    "• /terms - условия использования"
+                    "Доступные команды администратора:\n\n"
+                    "Основные:\n"
+                    "/app - открыть приложение\n"
+                    "/stats - статистика системы\n"
+                    "/users - список пользователей\n"
+                    "/requests - неотвеченные обращения\n\n"
+                    "Работа с сообщениями:\n"
+                    "#ID текст - ответить на сообщение\n"
+                    "/get #ID - информация о сообщении\n"
+                    "/del #ID - удалить сообщение\n\n"
+                    "Модерация:\n"
+                    "/ban ID причина [часы] - заблокировать\n"
+                    "/unban ID - разблокировать\n"
+                    "/unset_tos ID - сбросить согласие с условиями\n\n"
+                    "Управление ботом:\n"
+                    "/close текст - закрыть бота для пользователей\n"
+                    "/open - открыть бота\n\n"
+                    "Управление:\n"
+                    "/admin - управление администраторами\n"
+                    "/send_copy ID - получить копию данных\n"
+                    "/remove_data ID - удалить все данные\n"
+                    "/clear_db_1708 - полная очистка базы данных\n\n"
+                    "Документы:\n"
+                    "/privacy - политика конфиденциальности\n"
+                    "/terms - условия использования"
                 )
             else:
                 await message.answer(
-                    "<b>Доступные команды:</b>\n\n"
-                    "📱 /app - открыть приложение для отправки сообщений\n"
-                    "📄 /privacy - политика конфиденциальности\n"
-                    "📄 /terms - условия использования\n"
-                    "❓ /help - эта справка\n\n"
-                    "<i>Для отправки сообщений используйте кнопку «Открыть приложение» или команду /app</i>"
+                    "Доступные команды:\n\n"
+                    "/app - открыть приложение для отправки сообщений\n"
+                    "/privacy - политика конфиденциальности\n"
+                    "/terms - условия использования\n"
+                    "/help - эта справка\n\n"
+                    "Для отправки сообщений используйте кнопку «Открыть приложение» или команду /app"
                 )
 
         @self.router.message(Command("stats"))
         async def cmd_stats(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             logger.info(f"/stats от пользователя {user.id}")
             if not await self.db.is_admin(user.id):
                 return
@@ -963,57 +1126,77 @@ class MessageForwardingBot:
             user_stats = await self.db.get_users_count()
             admins = await self.db.get_admins()
             text = (
-                f"📊 <b>Статистика системы</b>\n\n"
-                f"<b>Пользователи:</b>\n"
-                f"• Всего: {user_stats['total']}\n"
-                f"• Активных (24ч): {user_stats['active_today']}\n"
-                f"• Заблокировано: {user_stats['banned']}\n"
-                f"• Администраторов: {len(admins)}\n\n"
-                f"<b>Сообщения:</b>\n"
-                f"• Всего: {stats['total_messages']}\n"
-                f"• Ответов: {stats['answers_sent']}\n"
-                f"• Выдано банов: {stats['bans_issued']}"
+                f"Статистика системы\n\n"
+                f"Пользователи:\n"
+                f"Всего: {user_stats['total']}\n"
+                f"Активных (24ч): {user_stats['active_today']}\n"
+                f"Заблокировано: {user_stats['banned']}\n"
+                f"Администраторов: {len(admins)}\n\n"
+                f"Сообщения:\n"
+                f"Всего: {stats['total_messages']}\n"
+                f"Ответов: {stats['answers_sent']}\n"
+                f"Выдано банов: {stats['bans_issued']}"
             )
             await message.answer(text)
 
         @self.router.message(Command("users"))
         async def cmd_users(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             logger.info(f"/users от пользователя {user.id}")
             if not await self.db.is_admin(user.id):
                 return
             users = await self.db.get_all_users()
             if not users:
-                return await message.answer("📭 В системе нет зарегистрированных пользователей.")
+                return await message.answer("В системе нет зарегистрированных пользователей.")
             
-            text = "👥 <b>Список пользователей:</b>\n\n"
+            text = "Список пользователей:\n\n"
             for i, u in enumerate(users[:20], 1):
-                status = '🚫 ЗАБЛОКИРОВАН' if u.get('is_banned') else '✅ АКТИВЕН'
+                status = 'ЗАБЛОКИРОВАН' if u.get('is_banned') else 'АКТИВЕН'
                 is_admin = await self.db.is_admin(u['user_id'])
-                admin_star = '👑 АДМИН ' if is_admin else ''
+                admin_star = 'АДМИН ' if is_admin else ''
                 username = f"@{u['username']}" if u.get('username') else 'нет username'
                 tos_accepted = 'ДА' if u.get('accepted_tos') else 'НЕТ'
                 text += f"{i}. {status} {admin_star}{username} (ID: {u['user_id']}) | ToS: {tos_accepted} | сообщений: {u.get('messages_sent', 0)}\n"
             if len(users) > 20:
-                text += f"\n<i>Отображено 20 из {len(users)} пользователей</i>"
+                text += f"\nОтображено 20 из {len(users)} пользователей"
             await message.answer(text)
 
         @self.router.message(Command("ban"))
         async def cmd_ban(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             try:
                 args = message.text.split()[1:]
                 if len(args) < 2:
-                    return await message.answer("❌ Использование: /ban ID причина [часы]")
+                    return await message.answer("Использование: /ban ID причина [часы]")
                 peer_id = int(args[0])
                 if await self.db.is_admin(peer_id):
-                    return await message.answer("⛔ Невозможно заблокировать администратора.")
+                    return await message.answer("Невозможно заблокировать администратора.")
                 reason = " ".join(args[1:-1]) if len(args) > 2 and args[-1].isdigit() else " ".join(args[1:])
                 hours = int(args[-1]) if len(args) > 2 and args[-1].isdigit() else None
                 if hours and (hours <= 0 or hours > MAX_BAN_HOURS):
-                    return await message.answer(f"❌ Количество часов должно быть от 1 до {MAX_BAN_HOURS}.")
+                    return await message.answer(f"Количество часов должно быть от 1 до {MAX_BAN_HOURS}.")
                 ban_until = datetime.now() + timedelta(hours=hours) if hours else None
                 
                 # Отправляем уведомление пользователю о блокировке
@@ -1023,16 +1206,16 @@ class MessageForwardingBot:
                         ban_until_str = ban_until.strftime('%d.%m.%Y %H:%M')
                         await self.bot.send_message(
                             peer_id,
-                            f"⛔ <b>ВЫ ЗАБЛОКИРОВАНЫ</b>\n\n"
-                            f"<b>Причина:</b> {reason}\n"
-                            f"<b>Блокировка истечет:</b> {ban_until_str}\n\n"
+                            f"ВЫ ЗАБЛОКИРОВАНЫ\n\n"
+                            f"Причина: {reason}\n"
+                            f"Блокировка истечет: {ban_until_str}\n\n"
                             f"До истечения срока вы не можете пользоваться ботом."
                         )
                     else:
                         await self.bot.send_message(
                             peer_id,
-                            f"⛔ <b>ВЫ ЗАБЛОКИРОВАНЫ НАВСЕГДА</b>\n\n"
-                            f"<b>Причина:</b> {reason}\n\n"
+                            f"ВЫ ЗАБЛОКИРОВАНЫ НАВСЕГДА\n\n"
+                            f"Причина: {reason}\n\n"
                             f"Для вопросов обратитесь к администратору."
                         )
                 except Exception as e:
@@ -1041,26 +1224,36 @@ class MessageForwardingBot:
                 await self.db.ban_user(peer_id, reason, ban_until)
                 await self.db.update_stats(bans_issued=1)
                 ban_duration = f"на {hours} ч." if hours else "навсегда"
-                await message.answer(f"✅ Пользователь {peer_id} заблокирован {ban_duration}.")
+                await message.answer(f"Пользователь {peer_id} заблокирован {ban_duration}.")
             except Exception as e:
-                await message.answer(f"❌ Ошибка: {e}")
+                await message.answer(f"Ошибка: {e}")
 
         @self.router.message(Command("unban"))
         async def cmd_unban(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             try:
                 args = message.text.split()[1:]
                 if len(args) < 1:
-                    return await message.answer("❌ Использование: /unban ID")
+                    return await message.answer("Использование: /unban ID")
                 peer_id = int(args[0])
                 
                 # Отправляем уведомление пользователю о разблокировке
                 try:
                     await self.bot.send_message(
                         peer_id,
-                        f"✅ <b>ВЫ РАЗБЛОКИРОВАНЫ</b>\n\n"
+                        f"ВЫ РАЗБЛОКИРОВАНЫ\n\n"
                         f"Блокировка снята. Теперь вы снова можете пользоваться ботом.\n\n"
                         f"Для начала работы выполните команду /start"
                     )
@@ -1068,55 +1261,75 @@ class MessageForwardingBot:
                     logger.error(f"Не удалось отправить уведомление о разблокировке пользователю {peer_id}: {e}")
                 
                 await self.db.unban_user(peer_id)
-                await message.answer(f"✅ Пользователь {peer_id} разблокирован.")
+                await message.answer(f"Пользователь {peer_id} разблокирован.")
             except Exception as e:
-                await message.answer(f"❌ Ошибка: {e}")
+                await message.answer(f"Ошибка: {e}")
 
         @self.router.message(Command("admin"))
         async def cmd_admin(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             text = message.text.split()
             if len(text) == 1:
-                await message.answer("👑 <b>Управление администраторами</b>\n\n• /admin add ID - добавить\n• /admin remove ID - удалить\n• /admin list - список")
+                await message.answer("Управление администраторами\n\n/admin add ID - добавить\n/admin remove ID - удалить\n/admin list - список")
             elif len(text) >= 3:
                 action = text[1].lower()
                 try:
                     target_id = int(text[2])
                     if action == "add":
                         if target_id == OWNER_ID:
-                            return await message.answer("👑 Владелец уже является администратором.")
+                            return await message.answer("Владелец уже является администратором.")
                         if await self.db.add_admin(target_id, user.id):
-                            await message.answer(f"✅ Пользователь {target_id} назначен администратором.")
+                            await message.answer(f"Пользователь {target_id} назначен администратором.")
                         else:
-                            await message.answer("❌ Произошла ошибка при добавлении администратора.")
+                            await message.answer("Произошла ошибка при добавлении администратора.")
                     elif action == "remove":
                         if target_id == OWNER_ID:
-                            return await message.answer("⛔ Невозможно удалить владельца из списка администраторов.")
+                            return await message.answer("Невозможно удалить владельца из списка администраторов.")
                         if await self.db.remove_admin(target_id):
-                            await message.answer(f"✅ Пользователь {target_id} исключен из списка администраторов.")
+                            await message.answer(f"Пользователь {target_id} исключен из списка администраторов.")
                         else:
-                            await message.answer("❌ Произошла ошибка при удалении администратора.")
+                            await message.answer("Произошла ошибка при удалении администратора.")
                 except ValueError:
-                    await message.answer("❌ Некорректный идентификатор пользователя.")
+                    await message.answer("Некорректный идентификатор пользователя.")
             elif len(text) == 2 and text[1].lower() == "list":
                 admins = await self.db.get_admins()
-                admin_text = "👑 <b>Список администраторов:</b>\n\n"
+                admin_text = "Список администраторов:\n\n"
                 for i, aid in enumerate(admins, 1):
                     ud = await self.db.get_user(aid) or {}
                     username = f"@{ud['username']}" if ud.get('username') else 'нет username'
                     if aid == OWNER_ID:
-                        admin_text += f"{i}. 👑 {username} (ID: {aid}) - владелец\n"
+                        admin_text += f"{i}. {username} (ID: {aid}) - владелец\n"
                     else:
                         admin_text += f"{i}. {username} (ID: {aid})\n"
                 await message.answer(admin_text)
 
         @self.router.message(Command("clear_db_1708"))
         async def cmd_clear_db(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             confirm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
             self.db.delete_confirmations[user.id] = {
@@ -1125,101 +1338,131 @@ class MessageForwardingBot:
             }
             
             await message.answer(
-                f"⚠️ <b>ОПАСНОЕ ДЕЙСТВИЕ</b>\n\n"
+                f"ОПАСНОЕ ДЕЙСТВИЕ\n\n"
                 f"Вы собираетесь полностью очистить базу данных.\n"
-                f"> Все сообщения будут безвозвратно удалены.\n\n"
+                f"Все сообщения будут безвозвратно удалены.\n\n"
                 f"Для подтверждения отправьте следующий код в течение 5 минут:\n"
-                f"<code>{confirm_code}</code>\n\n"
-                f"<i>Команда: /confirm_clear {confirm_code}</i>"
+                f"{confirm_code}\n\n"
+                f"Команда: /confirm_clear {confirm_code}"
             )
 
         @self.router.message(Command("confirm_clear"))
         async def cmd_confirm_clear(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             args = message.text.split()
             if len(args) < 2:
-                return await message.answer("❌ Использование: /confirm_clear КОД")
+                return await message.answer("Использование: /confirm_clear КОД")
             
             code = args[1].strip()
             confirm_data = self.db.delete_confirmations.get(user.id)
             
             if not confirm_data:
-                return await message.answer("❌ Не найден активный запрос на очистку базы данных.")
+                return await message.answer("Не найден активный запрос на очистку базы данных.")
             
             if datetime.now() > confirm_data['expires']:
                 del self.db.delete_confirmations[user.id]
-                return await message.answer("❌ Время подтверждения истекло. Запросите очистку повторно.")
+                return await message.answer("Время подтверждения истекло. Запросите очистку повторно.")
             
             if code != confirm_data['code']:
-                return await message.answer("❌ Неверный код подтверждения.")
+                return await message.answer("Неверный код подтверждения.")
             
             await self.db.clear_database()
             del self.db.delete_confirmations[user.id]
             
-            await message.answer("✅ База данных полностью очищена.")
+            await message.answer("База данных полностью очищена.")
             
             admin_name = self.get_user_info(await self.db.get_user(user.id))
             await self.notify_admins(
-                f"⚠️ Администратор {admin_name} полностью очистил базу данных.",
+                f"Администратор {admin_name} полностью очистил базу данных.",
                 exclude_user_id=user.id
             )
 
         @self.router.message(Command("get"))
         async def cmd_get_message(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             parts = message.text.split(maxsplit=1)
             if len(parts) < 2:
-                return await message.answer("❌ Использование: /get #ID")
+                return await message.answer("Использование: /get #ID")
             arg = parts[1].strip()
             msg_id_str = arg.lstrip('#')
             if not msg_id_str.isdigit():
-                return await message.answer("❌ Некорректный идентификатор. Пример: /get #123 или /get 123")
+                return await message.answer("Некорректный идентификатор. Пример: /get #123 или /get 123")
             msg_id = int(msg_id_str)
             msg_data = await self.db.get_message_with_details(msg_id)
             if not msg_data:
-                return await message.answer(f"❌ Сообщение #{msg_id} не найдено.")
+                return await message.answer(f"Сообщение #{msg_id} не найдено.")
 
             user_info = f"{msg_data.get('user_first_name', '')} {msg_data.get('user_last_name', '')}".strip() or "Не указано"
             if msg_data.get('username'):
                 user_info += f" (@{msg_data['username']})"
-            text = f"📄 <b>Сообщение #{msg_id}</b>\n"
-            text += f"👤 <b>Отправитель:</b> {user_info} (ID: {msg_data['user_id']})\n"
-            text += f"📅 <b>Дата:</b> {msg_data['forwarded_at'].strftime('%d.%m.%Y %H:%M') if msg_data['forwarded_at'] else 'N/A'}\n"
-            text += f"📝 <b>Текст:</b>\n{msg_data.get('text', '')}\n"
+            text = f"Сообщение #{msg_id}\n"
+            text += f"Отправитель: {user_info} (ID: {msg_data['user_id']})\n"
+            text += f"Дата: {msg_data['forwarded_at'].strftime('%d.%m.%Y %H:%M') if msg_data['forwarded_at'] else 'N/A'}\n"
+            text += f"Текст:\n{msg_data.get('text', '')}\n"
             if msg_data.get('is_answered'):
                 answered_by = msg_data.get('answered_by_name') or f"ID {msg_data['answered_by']}"
-                text += f"✅ <b>Ответ:</b> ({msg_data['answered_at'].strftime('%d.%m.%Y %H:%M') if msg_data['answered_at'] else ''}):\n{msg_data.get('answer_text', '')}\n"
-                text += f"👤 <b>Ответил:</b> {answered_by}\n"
+                text += f"Ответ: ({msg_data['answered_at'].strftime('%d.%m.%Y %H:%M') if msg_data['answered_at'] else ''}):\n{msg_data.get('answer_text', '')}\n"
+                text += f"Ответил: {answered_by}\n"
             else:
-                text += "⏳ <b>Статус:</b> ожидает ответа"
+                text += "Статус: ожидает ответа"
             await message.answer(text)
 
         @self.router.message(Command("del"))
         async def cmd_delete_message(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             parts = message.text.split(maxsplit=1)
             if len(parts) < 2:
-                return await message.answer("❌ Использование: /del #ID")
+                return await message.answer("Использование: /del #ID")
             
             arg = parts[1].strip()
             msg_id_str = arg.lstrip('#')
             
             if not msg_id_str.isdigit():
-                return await message.answer("❌ Некорректный идентификатор. Пример: /del #123")
+                return await message.answer("Некорректный идентификатор. Пример: /del #123")
             
             msg_id = int(msg_id_str)
             
             msg_data = await self.db.get_message(msg_id)
             if not msg_data:
-                return await message.answer(f"❌ Сообщение #{msg_id} не найдено.")
+                return await message.answer(f"Сообщение #{msg_id} не найдено.")
             
             confirm_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
             self.db.delete_confirmations[f"del_{user.id}_{msg_id}"] = {
@@ -1229,68 +1472,88 @@ class MessageForwardingBot:
             }
             
             await message.answer(
-                f"⚠️ <b>Подтверждение удаления</b>\n\n"
+                f"Подтверждение удаления\n\n"
                 f"Вы собираетесь удалить сообщение #{msg_id}.\n\n"
                 f"Для подтверждения отправьте следующий код:\n"
-                f"<code>{confirm_code}</code>\n\n"
-                f"<i>Команда: /confirm_del {msg_id} {confirm_code}</i>"
+                f"{confirm_code}\n\n"
+                f"Команда: /confirm_del {msg_id} {confirm_code}"
             )
 
         @self.router.message(Command("confirm_del"))
         async def cmd_confirm_delete(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             
             args = message.text.split()
             if len(args) < 3:
-                return await message.answer("❌ Использование: /confirm_del ID КОД")
+                return await message.answer("Использование: /confirm_del ID КОД")
             
             try:
                 msg_id = int(args[1])
                 code = args[2].strip()
             except ValueError:
-                return await message.answer("❌ Некорректный идентификатор.")
+                return await message.answer("Некорректный идентификатор.")
             
             confirm_key = f"del_{user.id}_{msg_id}"
             confirm_data = self.db.delete_confirmations.get(confirm_key)
             
             if not confirm_data:
-                return await message.answer("❌ Не найден активный запрос на удаление данного сообщения.")
+                return await message.answer("Не найден активный запрос на удаление данного сообщения.")
             
             if datetime.now() > confirm_data['expires']:
                 del self.db.delete_confirmations[confirm_key]
-                return await message.answer("❌ Время подтверждения истекло. Запросите удаление повторно.")
+                return await message.answer("Время подтверждения истекло. Запросите удаление повторно.")
             
             if code != confirm_data['code']:
-                return await message.answer("❌ Неверный код подтверждения.")
+                return await message.answer("Неверный код подтверждения.")
             
             deleted = await self.db.delete_message(msg_id)
             
             if deleted:
                 del self.db.delete_confirmations[confirm_key]
-                await message.answer(f"✅ Сообщение #{msg_id} удалено.")
+                await message.answer(f"Сообщение #{msg_id} удалено.")
                 logger.info(f"Администратор {user.id} удалил сообщение #{msg_id}")
                 
                 admin_name = self.get_user_info(await self.db.get_user(user.id))
                 await self.notify_admins(
-                    f"🗑 Администратор {admin_name} удалил сообщение #{msg_id}.",
+                    f"Администратор {admin_name} удалил сообщение #{msg_id}.",
                     exclude_user_id=user.id
                 )
             else:
-                await message.answer(f"❌ Не удалось удалить сообщение #{msg_id}.")
+                await message.answer(f"Не удалось удалить сообщение #{msg_id}.")
 
         @self.router.message(Command("requests"))
         async def cmd_requests(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
+            
+            if BOT_CLOSED and not await self.db.is_admin(user.id):
+                return await message.answer(
+                    f"Привет, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
+            
             if not await self.db.is_admin(user.id):
-                return await message.answer("⛔ У вас недостаточно прав для выполнения данной команды.")
+                return await message.answer("У вас недостаточно прав для выполнения данной команды.")
             unanswered = await self.db.get_unanswered_requests()
             if not unanswered:
-                await message.answer("✅ В настоящий момент неотвеченных обращений нет.")
+                await message.answer("В настоящий момент неотвеченных обращений нет.")
                 return
             
-            text = "📋 <b>Неотвеченные обращения:</b>\n\n"
+            text = "Неотвеченные обращения:\n\n"
             for i, req in enumerate(unanswered[:20], 1):
                 dt = req['forwarded_at'].strftime('%d.%m %H:%M') if req['forwarded_at'] else 'N/A'
                 user_name = req.get('first_name') or req.get('username') or f"ID {req['user_id']}"
@@ -1299,14 +1562,23 @@ class MessageForwardingBot:
                 text += f"{i}. #{req['message_id']} от {dt} — {user_name} (ID: {user_id})\n"
                 text += f"   {msg_snippet}\n\n"
             if len(unanswered) > 20:
-                text += f"<i>... и ещё {len(unanswered)-20} обращений</i>"
+                text += f"... и ещё {len(unanswered)-20} обращений"
             await message.answer(text)
 
         @self.router.message()
         async def handle_message(message: Message):
+            global BOT_CLOSED, BOT_CLOSED_MESSAGE
+            
             user = message.from_user
             user_id = user.id
             is_admin = await self.db.is_admin(user_id)
+            
+            if BOT_CLOSED and not is_admin:
+                return await message.answer(
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
+                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                )
             
             # Проверяем бан
             is_banned, reason, ban_until = await self.check_ban_status(user_id)
@@ -1315,7 +1587,7 @@ class MessageForwardingBot:
                 if ban_until:
                     ban_text = f"до {ban_until.strftime('%d.%m.%Y %H:%M')}"
                 await message.answer(
-                    f"⛔ <b>Доступ запрещён</b>\n\n"
+                    f"Доступ запрещён\n\n"
                     f"Ваш аккаунт заблокирован {ban_text}.\n"
                     f"Причина: {reason}"
                 )
@@ -1326,28 +1598,28 @@ class MessageForwardingBot:
                     await self.handle_answer_command(message)
                 else:
                     await message.answer(
-                        "👑 <b>Для ответа используйте формат:</b>\n"
-                        "<code>#ID текст ответа</code>\n\n"
+                        "Для ответа используйте формат:\n"
+                        "#ID текст ответа\n\n"
                         "Например: #100569 Благодарим за обращение! Ответ будет предоставлен в ближайшее время."
                     )
                 return
             
             if not await self.db.has_accepted_tos(user_id):
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="✅ Принимаю условия", callback_data="accept_tos")
+                    InlineKeyboardButton(text="Принимаю условия", callback_data="accept_tos")
                 ]])
                 await message.answer(
                     f"Уважаемый пользователь, {user.first_name or ''}.\n\n"
                     f"Для использования функционала бота необходимо принять условия:\n\n"
-                    f"📄 <a href='https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26'>Политика конфиденциальности</a>\n"
-                    f"📄 <a href='https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26'>Условия использования</a>\n\n"
+                    f"Политика конфиденциальности: https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26\n"
+                    f"Условия использования: https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26\n\n"
                     f"Нажимая кнопку «Принимаю условия», вы подтверждаете ознакомление и согласие с указанными документами.",
                     reply_markup=keyboard,
                     disable_web_page_preview=True
                 )
                 return
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=APP_URL))]])
             await message.answer(
                 f"Уважаемый пользователь, {user.first_name or ''}.\n\n"
                 f"Данный бот предназначен для направления обращений администратору.\n\n"
@@ -1361,22 +1633,22 @@ class MessageForwardingBot:
         text = message.text.strip()
         match = re.match(r'^#(\d+)\s+(.+)$', text, re.DOTALL)
         if not match:
-            await message.answer("❌ Неверный формат. Используйте: #ID текст ответа")
+            await message.answer("Неверный формат. Используйте: #ID текст ответа")
             return
         message_id = int(match.group(1))
         answer_text = match.group(2).strip()
         original = await self.db.get_message(message_id)
         if not original:
-            await message.answer(f"❌ Сообщение #{message_id} не найдено.")
+            await message.answer(f"Сообщение #{message_id} не найдено.")
             return
         user_id = original['user_id']
         is_banned, reason, ban_until = await self.check_ban_status(user_id)
         if is_banned:
-            await message.answer("⛔ Невозможно отправить ответ заблокированному пользователю.")
+            await message.answer("Невозможно отправить ответ заблокированному пользователю.")
             return
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=APP_URL))
+            InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=APP_URL))
         ]])
 
         try:
@@ -1384,7 +1656,7 @@ class MessageForwardingBot:
 
             await self.bot.send_message(
                 user_id,
-                f"📬 <b>Получен ответ на ваше обращение #{message_id}</b>\n\n"
+                f"Получен ответ на ваше обращение #{message_id}\n\n"
                 f"Для просмотра ответа откройте приложение.",
                 reply_markup=keyboard
             )
@@ -1392,19 +1664,25 @@ class MessageForwardingBot:
             await self.db.mark_message_answered(message_id, user.id, answer_text)
             await self.db.update_stats(answers_sent=1)
 
-            await message.answer(f"✅ Ответ на обращение #{message_id} успешно отправлен пользователю.")
+            await message.answer(f"Ответ на обращение #{message_id} успешно отправлен пользователю.")
 
             user_info = await self.db.get_user(user_id)
             await self.notify_admins(
-                f"💬 Администратор {admin_name} ответил на обращение #{message_id} пользователя {self.get_user_info_with_id(user_info)}.",
+                f"Администратор {admin_name} ответил на обращение #{message_id} пользователя {self.get_user_info_with_id(user_info)}.",
                 exclude_user_id=user.id
             )
         except Exception as e:
             logger.error(f"Ошибка при отправке ответа: {e}\n{traceback.format_exc()}")
-            await message.answer("❌ Не удалось отправить ответ. Произошла техническая ошибка.")
+            await message.answer("Не удалось отправить ответ. Произошла техническая ошибка.")
 
     async def process_web_app_message(self, user_id: int, text: str):
+        global BOT_CLOSED, BOT_CLOSED_MESSAGE
+        
         user_data = await self.db.get_user(user_id)
+        
+        # Проверка на закрытый бот
+        if BOT_CLOSED and not await self.is_admin_simple(user_id):
+            return False, f"bot_closed:{BOT_CLOSED_MESSAGE}"
         
         # Проверка бана
         is_banned, reason, ban_until = await self.check_ban_status(user_id)
@@ -1455,6 +1733,12 @@ class MessageForwardingBot:
             logger.error(f"Ошибка обработки сообщения из Web App: {e}\n{traceback.format_exc()}")
             await self.db.update_stats(failed_forwards=1)
             return False, "error"
+
+    async def is_admin_simple(self, user_id: int) -> bool:
+        if user_id == OWNER_ID:
+            return True
+        admins = await self.db.get_admins()
+        return user_id in admins
 
     async def shutdown(self, sig=None):
         logger.info(f"Завершение работы... Сигнал: {sig}")
@@ -1530,6 +1814,8 @@ async def main():
             return web.Response(text="Ошибка", status=500)
 
     async def api_auth_handler(request: web.Request) -> web.Response:
+        global BOT_CLOSED, BOT_CLOSED_MESSAGE
+        
         try:
             data = await request.json()
             init_data = data.get('initData')
@@ -1543,6 +1829,15 @@ async def main():
             user_id = user_info.get('id')
             if not user_id:
                 return web.json_response({'ok': False, 'error': 'ID пользователя не найден'})
+
+            # Проверка на закрытый бот
+            is_admin = await db.is_admin(user_id)
+            if BOT_CLOSED and not is_admin:
+                return web.json_response({
+                    'ok': False,
+                    'error': 'night_mode',
+                    'message': BOT_CLOSED_MESSAGE
+                }, status=503)
 
             logger.info(f"Авторизация пользователя {user_id} (@{user_info.get('username', 'N/A')})")
             await db.save_user(user_id, username=user_info.get('username'), first_name=user_info.get('first_name'), last_name=user_info.get('last_name'))
@@ -1592,6 +1887,8 @@ async def main():
             return web.json_response({'ok': False, 'error': str(e)})
 
     async def web_app_handler(request: web.Request) -> web.Response:
+        global BOT_CLOSED, BOT_CLOSED_MESSAGE
+        
         try:
             data = await request.json()
             init_data = data.get('initData')
@@ -1610,7 +1907,14 @@ async def main():
             if success:
                 return web.json_response({'ok': True, 'message_id': result})
             else:
-                if isinstance(result, str) and result.startswith('banned:'):
+                if isinstance(result, str) and result.startswith('bot_closed:'):
+                    message = result[11:]
+                    return web.json_response({
+                        'ok': False, 
+                        'error': 'night_mode',
+                        'message': message
+                    }, status=503)
+                elif isinstance(result, str) and result.startswith('banned:'):
                     ban_info_str = result[7:]
                     try:
                         ban_info = json.loads(ban_info_str)
@@ -1643,6 +1947,8 @@ async def main():
             return web.json_response({'ok': False, 'error': str(e)})
 
     async def api_messages_inbox_handler(request: web.Request) -> web.Response:
+        global BOT_CLOSED, BOT_CLOSED_MESSAGE
+        
         try:
             init_data = request.headers.get('X-Telegram-Init-Data')
             if not init_data:
@@ -1653,6 +1959,14 @@ async def main():
             user_id = user_info.get('id')
             if not user_id:
                 return web.json_response({'error': 'ID пользователя не найден'}, status=400)
+            
+            # Проверка на закрытый бот
+            is_admin = await db.is_admin(user_id)
+            if BOT_CLOSED and not is_admin:
+                return web.json_response({
+                    'error': 'night_mode',
+                    'message': BOT_CLOSED_MESSAGE
+                }, status=503)
             
             # Проверка бана
             is_banned, reason, ban_until = await bot.check_ban_status(user_id)
@@ -1673,6 +1987,8 @@ async def main():
             return web.json_response({'messages': []})
 
     async def api_messages_sent_handler(request: web.Request) -> web.Response:
+        global BOT_CLOSED, BOT_CLOSED_MESSAGE
+        
         try:
             init_data = request.headers.get('X-Telegram-Init-Data')
             if not init_data:
@@ -1683,6 +1999,14 @@ async def main():
             user_id = user_info.get('id')
             if not user_id:
                 return web.json_response({'error': 'ID пользователя не найден'}, status=400)
+            
+            # Проверка на закрытый бот
+            is_admin = await db.is_admin(user_id)
+            if BOT_CLOSED and not is_admin:
+                return web.json_response({
+                    'error': 'night_mode',
+                    'message': BOT_CLOSED_MESSAGE
+                }, status=503)
             
             # Проверка бана
             is_banned, reason, ban_until = await bot.check_ban_status(user_id)
