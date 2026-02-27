@@ -635,9 +635,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -686,9 +686,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -747,9 +747,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -799,9 +799,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -854,9 +854,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             logger.info(f"/privacy от пользователя {user.id}")
@@ -890,9 +890,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             logger.info(f"/terms от пользователя {user.id}")
@@ -927,9 +927,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             logger.info(f"/start от пользователя {user.id} (@{user.username})")
@@ -993,9 +993,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             logger.info(f"/app от пользователя {user.id}")
@@ -1035,9 +1035,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             logger.info(f"/help от пользователя {user.id}")
@@ -1114,9 +1114,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             logger.info(f"/stats от пользователя {user.id}")
@@ -1147,9 +1147,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             logger.info(f"/users от пользователя {user.id}")
@@ -1179,9 +1179,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1236,9 +1236,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1273,9 +1273,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1323,9 +1323,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1354,9 +1354,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1398,9 +1398,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1440,9 +1440,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1487,9 +1487,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1541,9 +1541,9 @@ class MessageForwardingBot:
             
             if BOT_CLOSED and not await self.db.is_admin(user.id):
                 return await message.answer(
-                    f"Привет, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Уважаемый пользователь, {user.first_name or ''}!\n"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             if not await self.db.is_admin(user.id):
@@ -1576,8 +1576,8 @@ class MessageForwardingBot:
             if BOT_CLOSED and not is_admin:
                 return await message.answer(
                     f"Уважаемый пользователь, {user.first_name or ''}!\n"
-                    f"Администратор закрыл бота на время, попробуйте вернуться чуть чуть попозже\n"
-                    f"При закрытии бота администратор оставил сообщение для пользователей: {BOT_CLOSED_MESSAGE}"
+                    f"Администратор закрыл бота на время, попробуйте вернуться чуть позже\n"
+                    f"При закрытии бота администратор оставил сообщение: {BOT_CLOSED_MESSAGE}"
                 )
             
             # Проверяем бан
@@ -1680,11 +1680,11 @@ class MessageForwardingBot:
         
         user_data = await self.db.get_user(user_id)
         
-        # Проверка на закрытый бот
+        # Проверка на закрытый бот (приоритет 1)
         if BOT_CLOSED and not await self.is_admin_simple(user_id):
             return False, f"bot_closed:{BOT_CLOSED_MESSAGE}"
         
-        # Проверка бана
+        # Проверка бана (приоритет 2)
         is_banned, reason, ban_until = await self.check_ban_status(user_id)
         if is_banned:
             ban_info = {
@@ -1830,7 +1830,13 @@ async def main():
             if not user_id:
                 return web.json_response({'ok': False, 'error': 'ID пользователя не найден'})
 
-            # Проверка на закрытый бот
+            logger.info(f"Авторизация пользователя {user_id} (@{user_info.get('username', 'N/A')})")
+            await db.save_user(user_id, username=user_info.get('username'), first_name=user_info.get('first_name'), last_name=user_info.get('last_name'))
+            log_user_action("AUTH", user_id, {'username': user_info.get('username'), 'first_name': user_info.get('first_name')})
+
+            user_data = await db.get_user(user_id)
+            
+            # ПРИОРИТЕТ 1: Проверка на закрытый бот (показываем даже если забанен)
             is_admin = await db.is_admin(user_id)
             if BOT_CLOSED and not is_admin:
                 return web.json_response({
@@ -1839,15 +1845,8 @@ async def main():
                     'message': BOT_CLOSED_MESSAGE
                 }, status=503)
 
-            logger.info(f"Авторизация пользователя {user_id} (@{user_info.get('username', 'N/A')})")
-            await db.save_user(user_id, username=user_info.get('username'), first_name=user_info.get('first_name'), last_name=user_info.get('last_name'))
-            log_user_action("AUTH", user_id, {'username': user_info.get('username'), 'first_name': user_info.get('first_name')})
-
-            user_data = await db.get_user(user_id)
-            
-            # Проверка бана
+            # ПРИОРИТЕТ 2: Проверка бана (только если бот открыт)
             is_banned = user_data and user_data.get('is_banned')
-            ban_info = None
             if is_banned:
                 ban_until = user_data.get('ban_until')
                 if ban_until and datetime.now() > ban_until.replace(tzinfo=None):
@@ -1865,9 +1864,17 @@ async def main():
                         'ban_info': ban_info
                     }, status=403)
 
+            # ПРИОРИТЕТ 3: Проверка ToS (только если бот открыт и не забанен)
+            has_accepted = await db.has_accepted_tos(user_id)
+            if not has_accepted and not is_admin:
+                return web.json_response({
+                    'ok': False,
+                    'error': 'tos_not_accepted',
+                    'message': 'Необходимо принять условия использования'
+                }, status=403)
+
             is_admin = await db.is_admin(user_id)
             unanswered = await db.get_unanswered_count(user_id) if not is_admin else 0
-            has_accepted = await db.has_accepted_tos(user_id)
 
             return web.json_response({
                 'ok': True,
@@ -1875,7 +1882,6 @@ async def main():
                     'id': user_id,
                     'is_admin': is_admin,
                     'is_banned': is_banned,
-                    'ban_info': ban_info,
                     'first_name': user_info.get('first_name'),
                     'username': user_info.get('username'),
                     'unanswered': unanswered,
@@ -1960,7 +1966,7 @@ async def main():
             if not user_id:
                 return web.json_response({'error': 'ID пользователя не найден'}, status=400)
             
-            # Проверка на закрытый бот
+            # Проверка на закрытый бот (приоритет 1)
             is_admin = await db.is_admin(user_id)
             if BOT_CLOSED and not is_admin:
                 return web.json_response({
@@ -1968,7 +1974,7 @@ async def main():
                     'message': BOT_CLOSED_MESSAGE
                 }, status=503)
             
-            # Проверка бана
+            # Проверка бана (приоритет 2)
             is_banned, reason, ban_until = await bot.check_ban_status(user_id)
             if is_banned:
                 return web.json_response({'error': 'banned', 'ban_info': {
@@ -2000,7 +2006,7 @@ async def main():
             if not user_id:
                 return web.json_response({'error': 'ID пользователя не найден'}, status=400)
             
-            # Проверка на закрытый бот
+            # Проверка на закрытый бот (приоритет 1)
             is_admin = await db.is_admin(user_id)
             if BOT_CLOSED and not is_admin:
                 return web.json_response({
@@ -2008,7 +2014,7 @@ async def main():
                     'message': BOT_CLOSED_MESSAGE
                 }, status=503)
             
-            # Проверка бана
+            # Проверка бана (приоритет 2)
             is_banned, reason, ban_until = await bot.check_ban_status(user_id)
             if is_banned:
                 return web.json_response({'error': 'banned', 'ban_info': {
