@@ -207,25 +207,173 @@
             100% { transform: scale(15) translateY(-200vh); opacity: 0; filter: blur(10px); }
         }
 
-        .app {
-            height: 100vh;
-            display: none; /* Скрыт по умолчанию */
-            flex-direction: column;
-            max-width: 480px;
-            margin: 0 auto;
+        .banned-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
-            opacity: 0;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+            z-index: 2000;
+            text-align: center;
+            background: var(--bg-primary);
+        }
+
+        .banned-screen.visible {
+            display: flex;
+        }
+
+        .banned-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(187, 106, 253, 0.15);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 40px;
+            border: 2px solid var(--accent);
+            box-shadow: 0 0 30px var(--glow-color);
+            animation: pulse 2s infinite;
+        }
+
+        .banned-icon svg {
+            width: 40px;
+            height: 40px;
+            fill: none;
+            stroke: var(--accent-light);
+            stroke-width: 2;
+        }
+
+        .banned-title {
+            font-size: 52px;
+            font-weight: 900;
+            letter-spacing: 6px;
+            margin-bottom: 16px;
             position: relative;
-            z-index: 10;
-            transition: opacity 0.3s ease; /* Плавное появление */
+            animation: glitch 3s infinite;
+            line-height: 1;
+            color: var(--accent);
         }
 
-        .app.visible {
+        .banned-title::before,
+        .banned-title::after {
+            content: 'BANNED';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+
+        .banned-title::before {
+            color: var(--accent-light);
+            z-index: -1;
+            animation: glitch-offset 0.3s infinite linear alternate;
+        }
+
+        .banned-title::after {
+            color: var(--accent);
+            z-index: -2;
+            animation: glitch-offset2 0.2s infinite linear alternate;
+        }
+
+        .banned-message {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+            text-transform: lowercase;
+        }
+
+        .banned-time {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 40px;
+            padding: 14px 28px;
+            background: rgba(187, 106, 253, 0.1);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--accent);
+            border-radius: 40px;
+            color: var(--accent-light);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            animation: border-pulse 2s infinite;
+            letter-spacing: 0.5px;
+        }
+
+        .banned-button {
+            background: linear-gradient(135deg, var(--accent), #9b4dff);
+            border: none;
+            border-radius: 40px;
+            padding: 16px 32px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px var(--glow-color);
+            width: 100%;
+            max-width: 280px;
+            margin-bottom: 24px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .banned-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px var(--glow-color);
+        }
+
+        .banned-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s;
+            border-bottom: 1px dashed var(--text-secondary);
+            padding-bottom: 3px;
+            opacity: 0.8;
+            cursor: pointer;
+        }
+
+        .banned-link:hover {
+            color: var(--accent-light);
+            border-bottom-color: var(--accent-light);
             opacity: 1;
-            display: flex; /* Показываем когда нужно */
         }
 
-        /* ToS Warning Screen */
+        @keyframes pulse {
+            0% { box-shadow: 0 0 30px rgba(187, 106, 253, 0.3); }
+            50% { box-shadow: 0 0 60px rgba(187, 106, 253, 0.6); }
+            100% { box-shadow: 0 0 30px rgba(187, 106, 253, 0.3); }
+        }
+
+        @keyframes border-pulse {
+            0% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
+            50% { border-color: var(--accent); box-shadow: 0 0 30px var(--glow-color); }
+            100% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
+        }
+
+        @keyframes glitch {
+            0%, 100% { transform: skew(0deg); }
+            2% { transform: skew(2deg); }
+            4% { transform: skew(-2deg); }
+            6% { transform: skew(0deg); }
+        }
+
+        @keyframes glitch-offset {
+            0% { left: -3px; top: -1px; }
+            100% { left: 3px; top: 1px; }
+        }
+
+        @keyframes glitch-offset2 {
+            0% { left: 3px; top: 1px; }
+            100% { left: -3px; top: -1px; }
+        }
+
         .tos-warning {
             position: fixed;
             top: 0;
@@ -233,7 +381,7 @@
             width: 100%;
             height: 100%;
             background: var(--bg-primary);
-            display: flex;
+            display: none;
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -242,8 +390,8 @@
             text-align: center;
         }
 
-        .tos-warning.hidden {
-            display: none;
+        .tos-warning.visible {
+            display: flex;
         }
 
         .tos-icon {
@@ -320,6 +468,24 @@
 
         .tos-link:hover {
             color: var(--accent-light);
+        }
+
+        .app {
+            height: 100vh;
+            display: none;
+            flex-direction: column;
+            max-width: 480px;
+            margin: 0 auto;
+            width: 100%;
+            opacity: 0;
+            position: relative;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .app.visible {
+            opacity: 1;
+            display: flex;
         }
 
         .tabs {
@@ -629,7 +795,6 @@
     </style>
 </head>
 <body>
-    <!-- Анимационный экран с логотипом AV и эффектом фонарика -->
     <div class="splash-screen" id="splash">
         <div class="av-container">
             <span class="av-letter letter-a" data-letter="A">A</span>
@@ -637,8 +802,22 @@
         </div>
     </div>
 
-    <!-- ToS Warning Screen -->
-    <div class="tos-warning hidden" id="tosWarning">
+    <div class="banned-screen" id="bannedScreen">
+        <div class="banned-icon">
+            <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </div>
+        <div class="banned-title">BANNED</div>
+        <div class="banned-message">ваш аккаунт был заблокирован</div>
+        <div class="banned-time" id="banTime">1 день</div>
+        <button class="banned-button" id="closeBannedBtn">Close app</button>
+        <a class="banned-link" id="rulesLink">Правила пользования</a>
+    </div>
+
+    <div class="tos-warning" id="tosWarning">
         <div class="tos-icon">
             <svg viewBox="0 0 24 24">
                 <path d="M12 2L2 7v8c0 5 10 7 10 7s10-2 10-7V7l-10-5z"/>
@@ -701,108 +880,66 @@
                 Отправить сообщение
             </button>  
         </div>
-    </div>  
+    </div>
 
     <script>
         (function() {
-            // Состояние
             let animationFinished = false;
             let authFinished = false;
             let authResult = null;
+            let bannedInfo = null;
             
             const tg = window.Telegram.WebApp;
             const splash = document.getElementById('splash');
             const tosWarning = document.getElementById('tosWarning');
             const app = document.getElementById('app');
+            const bannedScreen = document.getElementById('bannedScreen');
             
-            // Инициализация Telegram
             tg.expand();
             tg.setHeaderColor('#232323');
             tg.setBackgroundColor('#232323');
             
-            // Скрываем всё кроме splash
-            tosWarning.classList.add('hidden');
-            app.classList.remove('visible'); // Убираем visible класс если был
+            tosWarning.classList.remove('visible');
+            app.classList.remove('visible');
+            bannedScreen.classList.remove('visible');
             
-            // ========== АНИМАЦИЯ ==========
+            function getDaysText(days) {
+                if (days === 1) return '1 день';
+                if (days >= 2 && days <= 4) return days + ' дня';
+                return days + ' дней';
+            }
+            
+            function showBannedScreen(banInfo) {
+                bannedInfo = banInfo;
+                if (banInfo.until) {
+                    const now = new Date();
+                    const until = new Date(banInfo.until);
+                    const diffMs = until - now;
+                    if (diffMs > 0) {
+                        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                        document.getElementById('banTime').textContent = getDaysText(days);
+                    } else {
+                        document.getElementById('banTime').textContent = 'Навсегда';
+                    }
+                } else {
+                    document.getElementById('banTime').textContent = 'Навсегда';
+                }
+                splash.style.display = 'none';
+                tosWarning.classList.remove('visible');
+                app.classList.remove('visible');
+                bannedScreen.classList.add('visible');
+            }
+
             function startAnimation() {
                 const avContainer = document.querySelector('.av-container');
-                
-                // Аудио контекст
-                let audioContext = null;
-                let soundPlayed = false;
-                
-                function initAudio() {
-                    if (audioContext) return;
-                    try {
-                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    } catch (e) {}
-                }
-                
-                function playAppearanceSound() {
-                    if (!audioContext || soundPlayed) return;
-                    
-                    if (audioContext.state !== 'running') {
-                        audioContext.resume().then(() => actuallyPlay());
-                        return;
-                    }
-                    actuallyPlay();
-                }
-                
-                function actuallyPlay() {
-                    if (soundPlayed) return;
-                    soundPlayed = true;
-                    
-                    try {
-                        const osc1 = audioContext.createOscillator();
-                        const gain1 = audioContext.createGain();
-                        osc1.type = 'sine';
-                        osc1.frequency.setValueAtTime(90, audioContext.currentTime);
-                        osc1.frequency.exponentialRampToValueAtTime(150, audioContext.currentTime + 0.3);
-                        gain1.gain.setValueAtTime(0.15, audioContext.currentTime);
-                        gain1.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.5);
-                        osc1.connect(gain1);
-                        gain1.connect(audioContext.destination);
-                        osc1.start();
-                        osc1.stop(audioContext.currentTime + 0.5);
-                        
-                        const osc2 = audioContext.createOscillator();
-                        const gain2 = audioContext.createGain();
-                        osc2.type = 'sine';
-                        osc2.frequency.setValueAtTime(60, audioContext.currentTime + 0.1);
-                        gain2.gain.setValueAtTime(0.08, audioContext.currentTime + 0.1);
-                        gain2.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.15);
-                        osc2.connect(gain2);
-                        gain2.connect(audioContext.destination);
-                        osc2.start(audioContext.currentTime + 0.1);
-                        osc2.stop(audioContext.currentTime + 0.2);
-                    } catch (e) {}
-                }
-                
-                initAudio();
-                
-                // Обработчик клика для аудио
-                document.body.addEventListener('click', function initAudioOnClick() {
-                    initAudio();
-                    document.body.removeEventListener('click', initAudioOnClick);
-                }, { once: true });
-                
-                avContainer.addEventListener('animationstart', function(e) {
-                    if (e.animationName === 'letterA' || e.animationName === 'letterV') {
-                        playAppearanceSound();
-                    }
-                });
-                
-                // ЕДИНСТВЕННЫЙ обработчик окончания анимации
                 avContainer.addEventListener('animationend', function(e) {
                     if (e.animationName === 'riseUp') {
                         animationFinished = true;
-                        tryShowApp(); // Пытаемся показать UI когда анимация кончилась
+                        tryShowScreen();
                     }
                 });
             }
             
-            // ========== АВТОРИЗАЦИЯ ==========
             async function runAuth() {
                 try {
                     authResult = await authenticate(tg.initData);
@@ -811,37 +948,26 @@
                     authResult = { ok: false, error: error.message };
                 } finally {
                     authFinished = true;
-                    tryShowApp(); // Пытаемся показать UI когда авторизация кончилась
+                    tryShowScreen();
                 }
             }
             
-            // ========== СИНХРОНИЗАЦИЯ ==========
-            function tryShowApp() {
-                // Ждем оба события
+            function tryShowScreen() {
                 if (!animationFinished || !authFinished) return;
-                
-                // Прячем splash
+                if (authResult && !authResult.ok && authResult.error === 'banned' && authResult.ban_info) {
+                    showBannedScreen(authResult.ban_info);
+                    return;
+                }
                 splash.style.display = 'none';
-                
-                // Проверяем ToS
                 if (authResult && authResult.ok && authResult.user && authResult.user.accepted_tos === true) {
-                    // ToS принят - показываем приложение
                     window.userData = authResult.user;
                     window.tg = tg;
-                    
-                    // Заполняем данные пользователя
-                    document.getElementById('userName').textContent = 
-                        authResult.user.first_name || authResult.user.username || 'User';
-                    
+                    document.getElementById('userName').textContent = authResult.user.first_name || authResult.user.username || 'User';
                     if (authResult.user.unanswered > 0) {
                         document.getElementById('unansweredBadge').textContent = authResult.user.unanswered;
                         document.getElementById('unansweredBadge').classList.remove('hidden');
                     }
-                    
-                    // Показываем app с анимацией появления
                     app.classList.add('visible');
-                    
-                    // Грузим сообщения (уже не блокирует UI)
                     Promise.all([
                         loadInboxMessages(tg.initData).catch(() => []),
                         loadSentMessages(tg.initData).catch(() => [])
@@ -849,314 +975,317 @@
                         setupTabs();
                         setupEventListeners();
                     }).catch(console.error);
-                    
                 } else {
-                    // ToS не принят - показываем предупреждение
-                    tosWarning.classList.remove('hidden');
-                    
-                    document.getElementById('closeAppBtn').addEventListener('click', function() {
-                        if (tg) {
-                            tg.close();
-                        } else {
-                            window.close();
-                        }
+                    tosWarning.classList.add('visible');
+                }
+            }
+            
+            async function authenticate(initData) {
+                if (!initData) {
+                    return { ok: false, error: 'Нет данных авторизации' };
+                }
+                try {
+                    const response = await fetch('/api/auth', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ initData })
                     });
-                }
-            }
-            
-            // ========== ЗАПУСК ==========
-            startAnimation();     // Запускаем анимацию сразу
-            runAuth();            // Запускаем авторизацию параллельно
-            
-        })(); // Немедленно вызываем
-
-        // ========== ФУНКЦИИ ДЛЯ РАБОТЫ С API ==========
-        async function authenticate(initData) {
-            if (!initData) {
-                return { ok: false, error: 'Нет данных авторизации' };
-            }
-            
-            try {
-                const response = await fetch('/api/auth', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ initData })
-                });
-                
-                if (!response.ok) {
-                    return { ok: false, error: `HTTP ${response.status}` };
-                }
-                
-                return await response.json();
-            } catch (error) {
-                return { ok: false, error: error.message };
-            }
-        }
-
-        async function loadInboxMessages(initData) {
-            try {
-                const response = await fetch('/api/messages/inbox', {
-                    headers: { 'X-Telegram-Init-Data': initData }
-                });
-                
-                if (!response.ok) {
-                    console.error('Inbox response not OK:', response.status);
-                    displayInboxMessages([]);
-                    return;
-                }
-                
-                const data = await response.json();
-                displayInboxMessages(data.messages || []);
-            } catch (error) {
-                console.error('Load inbox error:', error);
-                displayInboxMessages([]);
-            }
-        }
-
-        async function loadSentMessages(initData) {
-            try {
-                const response = await fetch('/api/messages/sent', {
-                    headers: { 'X-Telegram-Init-Data': initData }
-                });
-                
-                if (!response.ok) {
-                    console.error('Sent response not OK:', response.status);
-                    displaySentMessages([]);
-                    return;
-                }
-                
-                const data = await response.json();
-                displaySentMessages(data.messages || []);
-            } catch (error) {
-                console.error('Load sent error:', error);
-                displaySentMessages([]);
-            }
-        }
-
-        async function sendMessage() {
-            const textarea = document.getElementById('messageText');
-            const sendBtn = document.getElementById('sendMessageBtn');
-            const text = textarea.value.trim();
-            
-            if (!text || sendBtn.disabled) return;
-            
-            sendBtn.disabled = true;
-            sendBtn.classList.remove('active');
-            
-            try {
-                const response = await fetch('/api/send', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        initData: window.tg.initData,
-                        text: text
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.ok) {
-                    textarea.value = '';
-                    document.getElementById('charCounter').textContent = '0/4096';
-                    
-                    await Promise.all([
-                        loadInboxMessages(window.tg.initData),
-                        loadSentMessages(window.tg.initData)
-                    ]);
-                    
-                    if (window.tg.showPopup) {
-                        window.tg.showPopup({
-                            title: 'Успешно',
-                            message: `Сообщение #${result.message_id} отправлено!`,
-                            buttons: [{ type: 'ok' }]
-                        });
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        return { ok: false, ...errorData, status: response.status };
                     }
-                } else {
-                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    return await response.json();
+                } catch (error) {
+                    return { ok: false, error: error.message };
                 }
-            } catch (error) {
-                console.error('Send error:', error);
-                alert('Ошибка отправки: ' + error.message);
-            } finally {
-                const hasText = textarea.value.trim().length > 0;
-                sendBtn.disabled = !hasText;
-                if (hasText) sendBtn.classList.add('active');
             }
-        }
-        
-        function displayInboxMessages(messages) {
-            const container = document.getElementById('inboxMessages');
-            if (!container) return;
-            
-            if (!messages || messages.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">:(</div>
-                        <h3>Нет ответов</h3>
-                        <p>Когда админ ответит, они появятся здесь</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            let html = '';
-            messages.forEach(msg => {
-                const date = msg.answered_at ? new Date(msg.answered_at) : new Date();
-                const timeStr = date.toLocaleString('ru-RU', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    day: '2-digit',
-                    month: '2-digit'
-                });
-                
-                html += `
-                    <div class="message-card">
-                        <div class="message-header">
-                            <span class="message-id">Ответ на #${msg.message_id}</span>
-                            <span class="message-time">${timeStr}</span>
-                        </div>
-                        
-                        <div class="answer-badge" style="margin-top: 0;">
-                            <div class="answer-header">Администратор:</div>
-                            <div class="answer-text">
-                                ${escapeHtml(msg.answer_text || 'Ответ получен')}
-                            </div>
-                            <div class="answer-meta">
-                                ${msg.answered_by_name || 'Администратор'}
-                            </div>
-                        </div>
-                        
-                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
-                            <div style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 4px;">
-                                Ваше сообщение:
-                            </div>
-                            <div style="font-size: 14px; color: var(--text-secondary);">
-                                ${escapeHtml(msg.original_text || '')}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            container.innerHTML = html;
-        }
 
-        function displaySentMessages(messages) {
-            const container = document.getElementById('sentMessages');
-            if (!container) return;
-            
-            if (!messages || messages.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">:(</div>
-                        <h3>Нет сообщений</h3>
-                        <p>Напишите первое сообщение</p>
-                    </div>
-                `;
-                return;
+            async function loadInboxMessages(initData) {
+                try {
+                    const response = await fetch('/api/messages/inbox', {
+                        headers: { 'X-Telegram-Init-Data': initData }
+                    });
+                    if (response.status === 403) {
+                        const errorData = await response.json();
+                        if (errorData.error === 'banned' && errorData.ban_info) {
+                            showBannedScreen(errorData.ban_info);
+                            return;
+                        }
+                    }
+                    if (!response.ok) {
+                        console.error('Inbox response not OK:', response.status);
+                        displayInboxMessages([]);
+                        return;
+                    }
+                    const data = await response.json();
+                    displayInboxMessages(data.messages || []);
+                } catch (error) {
+                    console.error('Load inbox error:', error);
+                    displayInboxMessages([]);
+                }
+            }
+
+            async function loadSentMessages(initData) {
+                try {
+                    const response = await fetch('/api/messages/sent', {
+                        headers: { 'X-Telegram-Init-Data': initData }
+                    });
+                    if (response.status === 403) {
+                        const errorData = await response.json();
+                        if (errorData.error === 'banned' && errorData.ban_info) {
+                            showBannedScreen(errorData.ban_info);
+                            return;
+                        }
+                    }
+                    if (!response.ok) {
+                        console.error('Sent response not OK:', response.status);
+                        displaySentMessages([]);
+                        return;
+                    }
+                    const data = await response.json();
+                    displaySentMessages(data.messages || []);
+                } catch (error) {
+                    console.error('Load sent error:', error);
+                    displaySentMessages([]);
+                }
+            }
+
+            async function sendMessage() {
+                const textarea = document.getElementById('messageText');
+                const sendBtn = document.getElementById('sendMessageBtn');
+                const text = textarea.value.trim();
+                if (!text || sendBtn.disabled) return;
+                sendBtn.disabled = true;
+                sendBtn.classList.remove('active');
+                try {
+                    const response = await fetch('/api/send', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            initData: window.tg.initData,
+                            text: text
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        if (result.error === 'banned' && result.ban_info) {
+                            showBannedScreen(result.ban_info);
+                            return;
+                        }
+                        if (result.error === 'rate_limit') {
+                            alert(result.message || 'Превышен лимит отправки сообщений');
+                        } else if (result.error === 'tos_not_accepted') {
+                            alert('Необходимо принять условия использования. Вернитесь в бот и нажмите /start');
+                        } else {
+                            alert('Ошибка: ' + (result.message || result.error || 'Неизвестная ошибка'));
+                        }
+                        return;
+                    }
+                    if (result.ok) {
+                        textarea.value = '';
+                        document.getElementById('charCounter').textContent = '0/4096';
+                        await Promise.all([
+                            loadInboxMessages(window.tg.initData),
+                            loadSentMessages(window.tg.initData)
+                        ]);
+                        if (window.tg.showPopup) {
+                            window.tg.showPopup({
+                                title: 'Успешно',
+                                message: `Сообщение #${result.message_id} отправлено!`,
+                                buttons: [{ type: 'ok' }]
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Send error:', error);
+                    alert('Ошибка отправки: ' + error.message);
+                } finally {
+                    const hasText = textarea.value.trim().length > 0;
+                    sendBtn.disabled = !hasText;
+                    if (hasText) sendBtn.classList.add('active');
+                }
             }
             
-            let html = '';
-            messages.forEach(msg => {
-                const date = msg.forwarded_at ? new Date(msg.forwarded_at) : new Date();
-                const timeStr = date.toLocaleString('ru-RU', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    day: '2-digit',
-                    month: '2-digit'
-                });
-                
-                const statusClass = msg.is_answered ? 'status-answered' : 'status-waiting';
-                const statusText = msg.is_answered ? 'Отвечено' : 'Ожидает ответа';
-                
-                html += `
-                    <div class="message-card">
-                        <div class="message-header">
-                            <span class="message-id">#${msg.message_id}</span>
-                            <span class="message-time">${timeStr}</span>
+            function displayInboxMessages(messages) {
+                const container = document.getElementById('inboxMessages');
+                if (!container) return;
+                if (!messages || messages.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <h3>Нет ответов</h3>
+                            <p>Когда админ ответит, они появятся здесь</p>
                         </div>
-                        
-                        <div class="message-status ${statusClass}">
-                            ${statusText}
-                        </div>
-                        
-                        <div class="message-text">
-                            ${escapeHtml(msg.text || '')}
-                        </div>
-                        
-                        ${msg.is_answered ? `
-                            <div class="answer-badge">
-                                <div class="answer-header">Ответ:</div>
+                    `;
+                    return;
+                }
+                let html = '';
+                messages.forEach(msg => {
+                    const date = msg.answered_at ? new Date(msg.answered_at) : new Date();
+                    const timeStr = date.toLocaleString('ru-RU', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        day: '2-digit',
+                        month: '2-digit'
+                    });
+                    html += `
+                        <div class="message-card">
+                            <div class="message-header">
+                                <span class="message-id">Ответ на #${msg.message_id}</span>
+                                <span class="message-time">${timeStr}</span>
+                            </div>
+                            <div class="answer-badge" style="margin-top: 0;">
+                                <div class="answer-header">Администратор:</div>
                                 <div class="answer-text">
                                     ${escapeHtml(msg.answer_text || 'Ответ получен')}
                                 </div>
+                                <div class="answer-meta">
+                                    ${msg.answered_by_name || 'Администратор'}
+                                </div>
                             </div>
-                        ` : ''}
-                    </div>
-                `;
-            });
-            
-            container.innerHTML = html;
-        }
-
-        // ========== НАСТРОЙКА ИНТЕРФЕЙСА ==========
-        function setupTabs() {
-            const tabButtons = document.querySelectorAll('.tab-btn');
-            const tabs = document.querySelectorAll('.tab');
-            
-            tabButtons.forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const tabId = this.dataset.tab;
-                    
-                    tabButtons.forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    tabs.forEach(t => t.classList.remove('active'));
-                    document.getElementById(tabId + '-tab').classList.add('active');
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <div style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 4px;">
+                                    Ваше сообщение:
+                                </div>
+                                <div style="font-size: 14px; color: var(--text-secondary);">
+                                    ${escapeHtml(msg.original_text || '')}
+                                </div>
+                            </div>
+                        </div>
+                    `;
                 });
-            });
-        }
+                container.innerHTML = html;
+            }
 
-        function setupEventListeners() {
-            const textarea = document.getElementById('messageText');
-            const sendBtn = document.getElementById('sendMessageBtn');
-            let isLoading = false;
-            
-            if (textarea) {
-                textarea.addEventListener('input', () => {
-                    const length = textarea.value.length;
-                    document.getElementById('charCounter').textContent = length + '/4096';
-                    
-                    const hasText = textarea.value.trim().length > 0;
-                    sendBtn.disabled = !hasText || isLoading;
-                    if (hasText && !isLoading) {
-                        sendBtn.classList.add('active');
-                    } else {
-                        sendBtn.classList.remove('active');
-                    }
+            function displaySentMessages(messages) {
+                const container = document.getElementById('sentMessages');
+                if (!container) return;
+                if (!messages || messages.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">✏️</div>
+                            <h3>Нет сообщений</h3>
+                            <p>Напишите первое сообщение</p>
+                        </div>
+                    `;
+                    return;
+                }
+                let html = '';
+                messages.forEach(msg => {
+                    const date = msg.forwarded_at ? new Date(msg.forwarded_at) : new Date();
+                    const timeStr = date.toLocaleString('ru-RU', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        day: '2-digit',
+                        month: '2-digit'
+                    });
+                    const statusClass = msg.is_answered ? 'status-answered' : 'status-waiting';
+                    const statusText = msg.is_answered ? 'Отвечено' : 'Ожидает ответа';
+                    html += `
+                        <div class="message-card">
+                            <div class="message-header">
+                                <span class="message-id">#${msg.message_id}</span>
+                                <span class="message-time">${timeStr}</span>
+                            </div>
+                            <div class="message-status ${statusClass}">
+                                ${statusText}
+                            </div>
+                            <div class="message-text">
+                                ${escapeHtml(msg.text || '')}
+                            </div>
+                            ${msg.is_answered ? `
+                                <div class="answer-badge">
+                                    <div class="answer-header">Ответ:</div>
+                                    <div class="answer-text">
+                                        ${escapeHtml(msg.answer_text || 'Ответ получен')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
                 });
+                container.innerHTML = html;
             }
             
-            if (sendBtn) {
-                sendBtn.addEventListener('click', sendMessage);
+            function setupTabs() {
+                const tabButtons = document.querySelectorAll('.tab-btn');
+                const tabs = document.querySelectorAll('.tab');
+                tabButtons.forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const tabId = this.dataset.tab;
+                        tabButtons.forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                        tabs.forEach(t => t.classList.remove('active'));
+                        document.getElementById(tabId + '-tab').classList.add('active');
+                    });
+                });
             }
-        }
 
-        function escapeHtml(unsafe) {
-            if (!unsafe) return '';
-            return unsafe
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-        }
+            function setupEventListeners() {
+                const textarea = document.getElementById('messageText');
+                const sendBtn = document.getElementById('sendMessageBtn');
+                if (textarea) {
+                    textarea.addEventListener('input', () => {
+                        const length = textarea.value.length;
+                        document.getElementById('charCounter').textContent = length + '/4096';
+                        const hasText = textarea.value.trim().length > 0;
+                        sendBtn.disabled = !hasText;
+                        if (hasText) {
+                            sendBtn.classList.add('active');
+                        } else {
+                            sendBtn.classList.remove('active');
+                        }
+                    });
+                }
+                if (sendBtn) {
+                    sendBtn.addEventListener('click', sendMessage);
+                }
+            }
+
+            function escapeHtml(unsafe) {
+                if (!unsafe) return '';
+                return unsafe
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            document.getElementById('closeBannedBtn').addEventListener('click', () => {
+                if (tg) {
+                    tg.close();
+                } else {
+                    window.close();
+                }
+            });
+
+            document.getElementById('rulesLink').addEventListener('click', (e) => {
+                e.preventDefault();
+                if (tg && tg.openLink) {
+                    tg.openLink('https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26');
+                } else {
+                    window.open('https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26', '_blank');
+                }
+            });
+
+            document.getElementById('closeAppBtn').addEventListener('click', () => {
+                if (tg) {
+                    tg.close();
+                } else {
+                    window.close();
+                }
+            });
+            
+            startAnimation();
+            runAuth();
+        })();
     </script>
 </body>
 </html>
