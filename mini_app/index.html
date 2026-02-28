@@ -1041,7 +1041,7 @@
             Для использования приложения необходимо принять<br>
             <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank" style="color: var(--accent-light);">Политику конфиденциальности</a> и 
             <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" style="color: var(--accent-light);">Условия использования</a>.<br><br>
-            Вернитесь в чат с ботом и нажмите кнопку "Я принимаю условия".
+            Вернитесь в чат с ботом и отправьте /start.
         </div>
         <button class="tos-button" id="closeAppBtn">CLOSE APP</button>
     </div>
@@ -1412,7 +1412,7 @@
                 if (!messages || messages.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-icon">📭</div>
+                            <div class="empty-icon">:(</div>
                             <h3>Нет ответов</h3>
                             <p>Когда админ ответит, они появятся здесь</p>
                         </div>
@@ -1463,7 +1463,7 @@
                 if (!messages || messages.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-icon">✏️</div>
+                            <div class="empty-icon">:(</div>
                             <h3>Нет сообщений</h3>
                             <p>Напишите первое сообщение</p>
                         </div>
