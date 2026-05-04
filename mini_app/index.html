@@ -2,29 +2,49 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AV messages</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AV Messages</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        :root { 
-            --bg-primary: #1e1e1e;
-            --bg-secondary: #2d2d2d;
-            --bg-tertiary: #3a3a3a;
-            --accent: #bb6afd;
-            --accent-light: #d9a5ff;
-            --text-primary: #ffffff;
-            --text-secondary: #b0b0b0;
-            --text-disabled: #5a5a5a;
-            --border: #404040;
-            --radius: 12px;
-            --radius-sm: 8px;
-            --glass-bg: rgba(45, 45, 55, 0.6);
-            --glass-border: rgba(255, 255, 255, 0.08); 
-            --shadow-color: rgba(0, 0, 0, 0.5);
-            --glow-color: rgba(187, 106, 253, 0.5);
-            --transition: all 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-            --content-bg: #1e1e1e; 
+        :root {
+            --bg-primary: #F2F2F7;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F9F9F9;
+            --accent: #007AFF;
+            --accent-light: #409CFF;
+            --text-primary: #1C1C1E;
+            --text-secondary: #8E8E93;
+            --text-tertiary: #C7C7CC;
+            --separator: #E5E5EA;
+            --glass-bg: rgba(255, 255, 255, 0.72);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --radius-sm: 12px;
+            --radius-xs: 8px;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+            --transition-fast: 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+            --transition-smooth: 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+            --font-stack: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #000000;
+                --bg-secondary: #1C1C1E;
+                --bg-tertiary: #2C2C2E;
+                --text-primary: #FFFFFF;
+                --text-secondary: #8E8E93;
+                --text-tertiary: #48484A;
+                --separator: #38383A;
+                --glass-bg: rgba(28, 28, 30, 0.82);
+                --glass-border: rgba(255, 255, 255, 0.08);
+                --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+                --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+                --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+            }
         }
 
         * {
@@ -32,20 +52,22 @@
             padding: 0;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         body {
-            font-family: 'Montserrat', sans-serif;
-            background: var(--bg-primary); 
+            font-family: var(--font-stack);
+            background: var(--bg-primary);
             color: var(--text-primary);
-            line-height: 1.5;
-            -webkit-font-smoothing: antialiased;
+            line-height: 1.4;
             height: 100vh;
             overflow: hidden;
-            position: relative;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
-        /* SPLASH SCREEN */
+        /* Splash Screen */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -58,157 +80,51 @@
             align-items: center;
             z-index: 1000;
             pointer-events: none;
-            overflow: hidden;
         }
 
-        .splash-screen::before {
-            content: '';
-            position: absolute;
-            top: -40%;
-            left: -30%;
-            width: 200%;  
-            height: 200%;
-            background: radial-gradient(circle at 20% 30%, 
-                        rgba(219, 181, 255, 0.492) 3%,  
-                        rgba(187, 106, 253, 0.35) 25%, 
-                        rgba(255, 183, 60, 0.35) 50%,
-                        transparent 80%);
-            pointer-events: none;
-            z-index: 1;
-            opacity: 0;
-            animation: flashlight 5s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
-            animation-delay: 1.5s;
+        .av-container {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            animation: splashFloat 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+            animation-delay: 0.5s;
         }
 
-        @keyframes flashlight {
-            0% {
+        @keyframes splashFloat {
+            0% { 
                 opacity: 0;
-                transform: scale(0.3);
-                filter: blur(0px);
-            } 
-            15% {
+                transform: scale(0.8) translateY(20px);
+            }
+            40% {
                 opacity: 1;
-                transform: scale(1.2);
-                filter: blur(2px);
+                transform: scale(1.02) translateY(-4px);
             }
-            35% {
-                opacity: 0.95;
-                transform: scale(1.8);
-                filter: blur(5px);
-            }  
-            55% { 
-                opacity: 0.8;
-                transform: scale(2.4); 
-                filter: blur(10px);
+            70% {
+                transform: scale(0.98) translateY(2px);
             }
-            75% {
-                opacity: 0.5;
-                transform: scale(3);
-                filter: blur(15px);
+            85% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
             }
-            100% { 
+            100% {
                 opacity: 0;
-                transform: scale(4);
-                filter: blur(25px);
+                transform: scale(1.5) translateY(-10px);
             }
         }
-        .av-container { 
-            animation: containerScale 1.2s cubic-bezier(0.4, 0, 0.2, 1) 1.5s forwards,
-                promise 1.6s 2.7s forwards,
-                riseUp 1.5s cubic-bezier(0.4, 0, 0.2, 1) 4s forwards;  
-        }
-        
-        .av-letter { 
-            opacity: 0;
-            position: relative;
-            font-family: 'Montserrat', sans-serif;
-            font-weight: 800; 
-            font-size: clamp(100px, 25vw, 200px);
-            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+
+        .av-letter {
+            font-family: var(--font-stack);
+            font-weight: 700;
+            font-size: clamp(80px, 20vw, 160px);
+            background: linear-gradient(135deg, #007AFF, #5856D6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            display: inline-block;
-            filter: drop-shadow(0 0 15px rgba(187, 106, 253, 0.5));
-            will-change: transform, filter, opacity;
+            letter-spacing: -2px;
+            filter: drop-shadow(0 2px 8px rgba(0, 122, 255, 0.2));
         }
 
-        @keyframes promise {
-            0%{
-                transform: scale(1.1) rotate(0deg);
-            }
-            80% {  
-                transform: scale(1.2) rotate(2deg);
-            } 
-        }
-        
-        .letter-a {
-            animation: letterA 0.8s ease-out 1.5s forwards;
-            left: -20px;
-            top: -40px; 
-        }
-
-        .letter-v {
-            animation: letterV 0.8s ease-out 1.7s forwards;
-            left: 20px;
-            top: 40px;
-        }
-
-        .letter-a::after,
-        .letter-v::after {
-            content: attr(data-letter);
-            position: absolute;
-            top: 0;
-            left: 0;
-            background: linear-gradient(135deg, #8c00ff, #7800da);  
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            opacity: 0.3;
-            filter: blur(4px);
-            transform: translateY(0);
-            z-index: -1;
-            animation: trail 1s ease-in-out 1.5s infinite alternate;
-            pointer-events: none;
-        }
-
-        .letter-a::after {
-            content: 'A';
-            animation-delay: 1.55s;
-        }
-
-        .letter-v::after {
-            content: 'V';
-            animation-delay: 1.6s; 
-        }
-
-        @keyframes trail { 
-            0% { transform: translateY(5px) scale(0.95); opacity: 0.2; filter: blur(8px); }
-            100% { transform: translateY(-5px) scale(1.05); opacity: 0.4; filter: blur(4px); }
-        } 
-
-        @keyframes containerScale {
-            0% { opacity: 1; transform: scale(2) translateY(100px); }
-            70% { transform: scale(.9) translateY(10px); } 
-            100% { transform: scale(1.1) translateY(0) ; } 
-        }
-
-        @keyframes letterA {
-            0% { opacity: 0; left: -60px; top: -40px; }
-            100% { opacity: 1; left: 0; top: 0;}
-        }
-
-        @keyframes letterV {
-            0% { opacity: 0; left: 100px; top: 40px; }
-            100% { opacity: 1; left: 0; top: 0; }
-        }
- 
-        @keyframes riseUp {
-            0% { transform: scale(1.2)rotate(2deg) translateY(0); opacity: 1; filter: blur(0); }
-            100% { transform: scale(15) translateY(-200vh); opacity: 0; filter: blur(10px); }
-        }
-
-        /* BANNED SCREEN */
+        /* Banned Screen */
         .banned-screen {
             position: fixed;
             top: 0;
@@ -220,267 +136,107 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            padding: 24px;
+            padding: 32px;
             z-index: 2000;
             text-align: center;
         }
 
         .banned-screen.visible {
             display: flex;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .banned-icon {
             width: 80px;
             height: 80px;
-            background: rgba(187, 106, 253, 0.15);
+            background: rgba(255, 59, 48, 0.1);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 40px;
-            border: 2px solid var(--accent);
-            box-shadow: 0 0 30px var(--glow-color);
-            animation: pulse 2s infinite;
+            margin-bottom: 32px;
         }
 
         .banned-icon svg {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             fill: none;
-            stroke: var(--accent-light);
+            stroke: #FF3B30;
             stroke-width: 2;
         }
 
         .banned-title {
-            font-size: 52px;
-            font-weight: 900;
-            letter-spacing: 6px;
-            margin-bottom: 16px;
-            position: relative;
-            animation: glitch 3s infinite;
-            line-height: 1;
-            color: #ffffff;
-        }
-
-        .banned-title::before,
-        .banned-title::after {
-            content: 'BANNED';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: transparent;
-        }
-
-        .banned-title::before {
-            color: rgba(255, 255, 255, 0.7);
-            z-index: -1;
-            animation: glitch-offset 0.3s infinite linear alternate;
-        }
-
-        .banned-title::after {
-            color: rgba(255, 255, 255, 0.4);
-            z-index: -2;
-            animation: glitch-offset2 0.2s infinite linear alternate;
-        }
-
-        @keyframes glitch {
-            0%, 100% { transform: skew(0deg); }
-            2% { transform: skew(2deg); }
-            4% { transform: skew(-2deg); }
-            6% { transform: skew(0deg); }
-        }
-
-        @keyframes glitch-offset {
-            0% { left: -3px; top: -1px; }
-            100% { left: 3px; top: 1px; }
-        }
-
-        @keyframes glitch-offset2 {
-            0% { left: 3px; top: 1px; }
-            100% { left: -3px; top: -1px; }
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
         }
 
         .banned-message {
-            font-size: 16px;
+            font-size: 17px;
             color: var(--text-secondary);
-            margin-bottom: 32px;
-            text-transform: lowercase;
+            margin-bottom: 40px;
+            max-width: 280px;
         }
 
         .banned-time {
-            font-size: 22px;
-            font-weight: 700;
+            font-size: 15px;
+            font-weight: 500;
+            color: #FF3B30;
             margin-bottom: 40px;
-            padding: 14px 28px;
-            background: rgba(187, 106, 253, 0.1);
-            backdrop-filter: blur(8px);
-            border: 1px solid var(--accent);
-            border-radius: 40px;
-            color: var(--accent-light);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            animation: border-pulse 2s infinite;
-            letter-spacing: 0.5px;
-        }
-
-        @keyframes border-pulse {
-            0% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
-            50% { border-color: var(--accent); box-shadow: 0 0 30px var(--glow-color); }
-            100% { border-color: rgba(187, 106, 253, 0.5); box-shadow: 0 0 20px rgba(187, 106, 253, 0.2); }
+            padding: 12px 24px;
+            background: rgba(255, 59, 48, 0.08);
+            border-radius: 20px;
         }
 
         .banned-button {
-            background: linear-gradient(135deg, var(--accent), #9b4dff);
+            background: var(--accent);
             border: none;
-            border-radius: 40px;
-            padding: 16px 32px;
+            border-radius: 20px;
+            padding: 14px 40px;
             color: white;
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px var(--glow-color);
+            transition: var(--transition-fast);
             width: 100%;
             max-width: 280px;
-            margin-bottom: 24px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            font-family: var(--font-stack);
+            box-shadow: var(--shadow-md);
         }
 
-        .banned-button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 8px 25px var(--glow-color);
+        .banned-button:active {
+            transform: scale(0.96);
+            opacity: 0.8;
         }
 
         .banned-link {
-            color: var(--text-secondary);
+            color: var(--accent);
             text-decoration: none;
-            font-size: 14px;
-            transition: all 0.2s;
-            border-bottom: 1px dashed var(--text-secondary);
-            padding-bottom: 3px;
-            opacity: 0.8;
-            cursor: pointer;
-        }
-
-        .banned-link:hover {
-            color: var(--accent-light);
-            border-bottom-color: var(--accent-light);
-            opacity: 1;
-        }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 30px rgba(187, 106, 253, 0.3); }
-            50% { box-shadow: 0 0 60px rgba(187, 106, 253, 0.6); }
-            100% { box-shadow: 0 0 30px rgba(187, 106, 253, 0.3); }
-        }
-
-        /* TOS SCREEN */
-        .tos-warning {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--bg-primary);
-            display: none;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            padding: 24px;
-            z-index: 1001;
-            text-align: center;
-        }
-
-        .tos-warning.visible {
-            display: flex;
-        }
-
-        .tos-icon {
-            width: 80px;
-            height: 80px;
-            background: rgba(187, 106, 253, 0.1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 24px;
-            border: 2px solid var(--accent);
-            box-shadow: 0 0 30px rgba(187, 106, 253, 0.3);
-        }
-
-        .tos-icon svg {
-            width: 40px;
-            height: 40px;
-            fill: none;
-            stroke: var(--accent-light);
-            stroke-width: 2;
-        }
-
-        .tos-title {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 16px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .tos-message {
-            font-size: 16px;
-            color: var(--text-secondary);
-            margin-bottom: 32px;
-            line-height: 1.6;
-            max-width: 320px;
-        }
-
-        .tos-button {
-            background: linear-gradient(135deg, var(--accent), #9b4dff);
-            border: none;
-            border-radius: 30px;
-            padding: 16px 32px;
-            color: white;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            box-shadow: 0 4px 15px rgba(187, 106, 253, 0.4);
-            width: 100%;
-            max-width: 280px;
-        }
-
-        .tos-button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(187, 106, 253, 0.6);
-        }
-
-        .tos-links {
+            font-size: 15px;
             margin-top: 24px;
-            display: flex;
-            gap: 16px;
-            justify-content: center;
+            font-weight: 500;
+            cursor: pointer;
         }
 
-        .tos-link {
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-size: 14px;
-            transition: color 0.2s;
+        .banned-link:active {
+            opacity: 0.6;
         }
 
-        .tos-link:hover {
-            color: var(--accent-light);
-        }
-
-        /* NIGHT SCREEN (твой экран) */
+        /* Night Screen */
         .night-screen {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #0b0f2a 0%, #1a1f3a 50%, #0f142e 100%);
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f1421 100%);
             display: none;
             flex-direction: column;
             justify-content: center;
@@ -500,96 +256,98 @@
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 0;
         }
 
         .night-star {
             position: absolute;
             background: white;
             border-radius: 50%;
-            animation: twinkle 3s infinite ease-in-out;
+            animation: twinkle 2.5s infinite ease-in-out;
         }
 
         @keyframes twinkle {
-            0%, 100% { opacity: 0.2; transform: scale(1); }
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
             50% { opacity: 1; transform: scale(1.2); }
         }
 
         .night-shooting-star {
             position: absolute;
-            width: 100px;
-            height: 2px;
-            background: linear-gradient(90deg, rgba(255,255,255,0.8), transparent);
-            transform: rotate(-45deg);
-            animation: shoot 4s infinite linear;
+            width: 80px;
+            height: 1.5px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.6), transparent);
+            transform: rotate(-35deg);
+            animation: shoot 3.5s infinite linear;
             opacity: 0;
         }
 
         @keyframes shoot {
-            0% {
-                transform: translateX(0) translateY(0) rotate(-45deg);
-                opacity: 1;
-            }
-            70% {
-                opacity: 1;
-            }
-            100% {
-                transform: translateX(-500px) translateY(500px) rotate(-45deg);
-                opacity: 0;
-            }
+            0% { transform: translateX(0) translateY(0) rotate(-35deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateX(-400px) translateY(400px) rotate(-35deg); opacity: 0; }
         }
 
         .night-moon {
             position: absolute;
-            top: 50px;
-            right: 50px;
-            width: 60px;
-            height: 60px;
-            background: #f0f0f0;
+            top: 60px;
+            right: 40px;
+            width: 70px;
+            height: 70px;
+            background: #f5f5f5;
             border-radius: 50%;
-            box-shadow: 0 0 50px rgba(255, 255, 255, 0.3);
-            z-index: 1;
+            box-shadow: 0 0 60px rgba(255, 255, 255, 0.25), 0 0 120px rgba(255, 255, 255, 0.1);
         }
 
         .night-moon::before {
             content: '';
             position: absolute;
-            top: 5px;
-            left: 10px;
-            width: 20px;
-            height: 20px;
-            background: #ddd;
+            top: 8px;
+            left: 12px;
+            width: 16px;
+            height: 16px;
+            background: #e8e8e8;
             border-radius: 50%;
             opacity: 0.5;
         }
 
+        .night-moon::after {
+            content: '';
+            position: absolute;
+            top: 30px;
+            left: 18px;
+            width: 8px;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 50%;
+            opacity: 0.3;
+        }
+
         .night-cloud {
             position: absolute;
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(255, 255, 255, 0.02);
             border-radius: 100px;
-            filter: blur(20px);
-            z-index: 0;
+            filter: blur(30px);
         }
 
         .night-cloud1 {
-            width: 300px;
-            height: 80px;
-            bottom: 100px;
-            left: -50px;
-            animation: drift 20s infinite linear;
+            width: 200px;
+            height: 60px;
+            bottom: 120px;
+            left: -30px;
+            animation: drift 25s infinite linear;
         }
 
         .night-cloud2 {
-            width: 400px;
-            height: 100px;
-            top: 150px;
-            right: -100px;
-            animation: drift 25s infinite linear reverse;
+            width: 280px;
+            height: 80px;
+            top: 200px;
+            right: -60px;
+            animation: drift 30s infinite linear reverse;
         }
 
         @keyframes drift {
             0% { transform: translateX(0); }
-            100% { transform: translateX(200px); }
+            100% { transform: translateX(150px); }
         }
 
         .night-content {
@@ -598,70 +356,137 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
             width: 100%;
-            max-width: 500px;
-            margin: 0 auto;
-            min-height: 100vh;
+            max-width: 400px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius-lg);
+            padding: 40px 32px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .night-closed {
-            font-size: 48px;
-            font-weight: 700;
-            letter-spacing: 4px;
-            margin-bottom: 30px;
-            color: #d9d9d9;
-            text-align: center;
-            width: 100%;
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            color: rgba(255, 255, 255, 0.9);
+            text-transform: uppercase;
         }
 
         .night-message {
-            font-size: 18px;
-            color: rgba(189, 189, 189, 0.9);
-            margin-bottom: 50px;
-            font-weight: 400;
-            letter-spacing: 0.5px;
-            backdrop-filter: blur(5px);
-            padding: 15px 30px;
-            border-radius: 40px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 36px;
             text-align: center;
-            width: fit-content;
-            min-width: 200px;
-            max-width: 90%;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            margin-left: auto;
-            margin-right: auto;
             line-height: 1.5;
         }
 
         .night-button {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50px;
-            padding: 16px 40px;
-            color: rgb(221, 221, 221);
-            font-size: 16px;
+            border-radius: 20px;
+            padding: 14px 36px;
+            color: white;
+            font-size: 17px;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
-            width: fit-content;
-            margin: 0 auto;
-            letter-spacing: 1px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+            font-family: var(--font-stack);
+            width: 100%;
+            max-width: 240px;
         }
 
-        .night-button:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        .night-button:active {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(0.96);
         }
 
-        /* MAIN APP */
+        /* TOS Screen */
+        .tos-warning {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 32px;
+            z-index: 1001;
+            text-align: center;
+        }
+
+        .tos-warning.visible {
+            display: flex;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .tos-icon {
+            width: 72px;
+            height: 72px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tos-icon svg {
+            width: 48px;
+            height: 48px;
+            fill: none;
+            stroke: var(--accent);
+            stroke-width: 1.5;
+        }
+
+        .tos-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .tos-message {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 36px;
+            line-height: 1.6;
+            max-width: 300px;
+        }
+
+        .tos-message a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .tos-button {
+            background: var(--accent);
+            border: none;
+            border-radius: 20px;
+            padding: 14px 40px;
+            color: white;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition-fast);
+            width: 100%;
+            max-width: 280px;
+            font-family: var(--font-stack);
+            box-shadow: var(--shadow-md);
+        }
+
+        .tos-button:active {
+            transform: scale(0.96);
+            opacity: 0.8;
+        }
+
+        /* Main App */
         .app {
             height: 100vh;
             display: none;
@@ -670,65 +495,65 @@
             margin: 0 auto;
             width: 100%;
             opacity: 0;
+            background: var(--bg-primary);
             position: relative;
-            z-index: 10;
-            transition: opacity 0.3s ease;
         }
 
         .app.visible {
+            display: flex;
             opacity: 1;
-            display: flex;
         }
 
-        .tabs {
+        /* Navigation */
+        .nav-bar {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 0.5px solid var(--separator);
+            padding: 12px 16px;
+            padding-top: max(12px, env(safe-area-inset-top));
+            z-index: 100;
+        }
+
+        .nav-tabs {
             display: flex;
-            gap: 8px;
-            padding: 16px 16px 8px;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            padding: 2px;
+            gap: 2px;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
             background: transparent;
-            border-bottom: 1px solid var(--glass-border);
-            transform: translateY(-100%);
-            opacity: 0;
-            animation: slideFromTop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.5s forwards;
+            color: var(--text-secondary);
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            font-family: var(--font-stack);
+            position: relative;
         }
 
-        @keyframes slideFromTop {
-            0% { transform: translateY(-100%); opacity: 0; }
-            100% { transform: translateY(0); opacity: 1; }
+        .nav-tab.active {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            box-shadow: var(--shadow-sm);
         }
 
+        /* Content */
         .content {
             flex: 1;
-            overflow-y: auto; 
+            overflow-y: auto;
             padding: 16px;
-            scrollbar-width: thin;
-            scrollbar-color: var(--accent) transparent;
-            background: var(--content-bg);
-            transform: scale(0.95);
-            opacity: 0;
-            animation: contentAppear 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1s forwards;
-        }
-
-        @keyframes contentAppear {
-            0% { transform: scale(0.95); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        .message-input-container {
-            padding: 16px;
-            background: transparent;
-            border-top: 1px solid var(--glass-border);
-            transform: translateY(100%);
-            opacity: 0;
-            animation: slideFromBottom 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.5s forwards;
-        }
-
-        @keyframes slideFromBottom {
-            0% { transform: translateY(100%); opacity: 0; }
-            100% { transform: translateY(0); opacity: 1; }
+            -webkit-overflow-scrolling: touch;
         }
 
         .content::-webkit-scrollbar {
-            width: 4px;
+            width: 3px;
         }
 
         .content::-webkit-scrollbar-track {
@@ -736,8 +561,8 @@
         }
 
         .content::-webkit-scrollbar-thumb {
-            background: var(--accent);
-            border-radius: 4px;
+            background: var(--text-tertiary);
+            border-radius: 3px;
         }
 
         .tab {
@@ -754,27 +579,30 @@
             gap: 12px;
         }
 
+        /* Message Card - Apple iMessage style */
         .message-card {
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            border-radius: var(--radius-sm);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
             padding: 16px;
-            box-shadow: 0 8px 20px -8px var(--shadow-color);
-            transition: transform 0.25s ease, box-shadow 0.3s ease, border-color 0.2s;
-            animation: cardFloatIn 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            animation: cardAppear 0.4s ease-out both;
         }
 
-        @keyframes cardFloatIn {
-            0% { opacity: 0; transform: translateY(15px) scale(0.98); }
-            100% { opacity: 1; transform: translateY(0) scale(1); }
+        @keyframes cardAppear {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
-        .message-card:hover {
-            transform: translateY(-4px) scale(1.02);
-            border-color: rgba(187, 106, 253, 0.5);
-            box-shadow: 0 15px 30px -8px var(--glow-color);
+        .message-card:active {
+            transform: scale(0.98);
+            box-shadow: var(--shadow-md);
         }
 
         .message-header {
@@ -782,67 +610,72 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
-            font-size: 14px;
-            color: var(--text-secondary);
         }
 
         .message-id {
+            font-size: 13px;
             font-weight: 600;
-            color: var(--accent-light);
+            color: var(--accent);
+            letter-spacing: -0.2px;
         }
 
         .message-time {
             font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
         }
 
         .message-status {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 30px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
             margin-bottom: 10px;
-            backdrop-filter: blur(4px);
+            letter-spacing: -0.1px;
         }
 
         .status-answered {
-            background: rgba(187, 106, 253, 0.2);
-            color: var(--accent-light);
-            border: 1px solid rgba(187, 106, 253, 0.3);
+            background: rgba(52, 199, 89, 0.1);
+            color: #34C759;
         }
 
         .status-waiting {
-            background: rgba(243, 156, 18, 0.2);
-            color: #f39c12;
-            border: 1px solid rgba(243, 156, 18, 0.3);
+            background: rgba(255, 149, 0, 0.1);
+            color: #FF9500;
         }
 
         .message-text {
-            font-size: 15px;
-            margin-bottom: 10px;
+            font-size: 16px;
+            margin-bottom: 12px;
             word-break: break-word;
             white-space: pre-wrap;
+            line-height: 1.4;
+            letter-spacing: -0.2px;
         }
 
         .answer-badge {
-            background: rgba(187, 106, 253, 0.1);
-            border-left: 3px solid var(--accent);
-            padding: 12px;
+            background: var(--bg-tertiary);
             border-radius: var(--radius-sm);
-            margin-top: 10px;
-            backdrop-filter: blur(4px);
+            padding: 12px;
+            margin-top: 8px;
         }
 
         .answer-header {
+            font-size: 12px;
             font-weight: 600;
-            color: var(--accent-light);
-            margin-bottom: 5px;
-            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .answer-text {
-            color: var(--text-secondary);
-            font-size: 14px;
+            color: var(--text-primary);
+            font-size: 15px;
+            line-height: 1.4;
         }
 
         .answer-meta {
@@ -851,100 +684,85 @@
             color: var(--text-secondary);
         }
 
-        .tab-btn {
-            flex: 1;
-            padding: 12px 0;
-            border: none;
-            background: transparent;
-            color: var(--text-secondary);
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
-            border-radius: 12px;
-            backdrop-filter: blur(4px);
-        }
-
-        .tab-btn.active {
-            color: rgb(219, 219, 219);
-            background-color: rgba(187, 106, 253, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(181, 96, 251);
-            box-shadow: inset 0 0 20px rgba(187, 106, 253, 0.4);
-            font-weight: 600;
-            text-shadow: 0px 0px 10px rgba(187, 106, 253, 0.5);
-            transform: translateY(-1px);
+        /* Input Area */
+        .message-input-container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 0.5px solid var(--separator);
+            padding: 12px 16px;
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
         }
 
         .message-input-wrapper {
             position: relative;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .message-input {
             width: 100%;
-            padding: 14px 16px;
-            background: var(--glass-bg);
-            backdrop-filter: blur(8px);
-            border: 1px solid var(--glass-border);
-            border-radius: var(--radius);
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: none;
+            border-radius: var(--radius-sm);
             color: var(--text-primary);
             font-size: 16px;
             resize: none;
-            font-family: inherit;
-            transition: border 0.2s, box-shadow 0.2s;
+            font-family: var(--font-stack);
+            letter-spacing: -0.2px;
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+            line-height: 1.4;
         }
 
         .message-input:focus {
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(187, 106, 253, 0.2);
+            background: var(--bg-secondary);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
         }
 
         .message-input::placeholder {
-            color: var(--text-disabled);
+            color: var(--text-tertiary);
         }
 
         .char-counter {
             position: absolute;
             bottom: 8px;
             right: 12px;
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
-            background: rgba(0,0,0,0.3);
+            background: var(--bg-secondary);
             padding: 2px 8px;
-            border-radius: 20px;
-            backdrop-filter: blur(4px);
-            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            font-weight: 500;
         }
 
         .send-btn {
             width: 100%;
-            padding: 14px;
-            background: var(--text-disabled);
+            padding: 12px;
+            background: var(--text-tertiary);
             border: none;
-            border-radius: var(--radius);
-            color: var(--bg-primary);
-            font-size: 16px;
+            border-radius: var(--radius-sm);
+            color: white;
+            font-size: 17px;
             font-weight: 600;
             cursor: not-allowed;
-            transition: var(--transition);
-            opacity: 0.5;
+            transition: all 0.2s ease;
+            font-family: var(--font-stack);
+            letter-spacing: -0.2px;
         }
 
         .send-btn.active {
-            background: linear-gradient(135deg, var(--accent), #9b4dff);
-            opacity: 1;
+            background: var(--accent);
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(187, 106, 253, 0.4);
-            transform: scale(1.02);
+            box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
         }
 
-        .send-btn.active:hover {
-            transform: scale(1.04);
-            box-shadow: 0 6px 20px rgba(187, 106, 253, 0.6);
+        .send-btn.active:active {
+            transform: scale(0.97);
+            background: #0066D6;
         }
 
+        /* Loading & Empty States */
         .loading {
             text-align: center;
             padding: 40px 20px;
@@ -952,10 +770,10 @@
         }
 
         .loading-spinner {
-            width: 36px;
-            height: 36px;
+            width: 24px;
+            height: 24px;
             margin: 0 auto 12px;
-            border: 3px solid rgba(255,255,255,0.1);
+            border: 2.5px solid var(--text-tertiary);
             border-top-color: var(--accent);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
@@ -967,14 +785,30 @@
 
         .empty-state {
             text-align: center;
-            padding: 40px 20px;
+            padding: 60px 20px;
             color: var(--text-secondary);
         }
 
         .empty-icon {
-            font-size: 48px;
+            font-size: 40px;
             margin-bottom: 12px;
-            opacity: 0.7;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            letter-spacing: -0.3px;
+        }
+
+        .empty-state p {
+            font-size: 15px;
+            color: var(--text-secondary);
+            max-width: 240px;
+            margin: 0 auto;
+            line-height: 1.4;
         }
 
         .hidden {
@@ -987,79 +821,79 @@
     </style>
 </head>
 <body>
-    <!-- SPLASH SCREEN -->
+    <!-- Splash Screen -->
     <div class="splash-screen" id="splash">
         <div class="av-container">
-            <span class="av-letter letter-a" data-letter="A">A</span>
-            <span class="av-letter letter-v" data-letter="V">V</span>
+            <span class="av-letter">A</span>
+            <span class="av-letter">V</span>
         </div>
     </div>
 
-    <!-- BANNED SCREEN -->
+    <!-- Banned Screen -->
     <div class="banned-screen" id="bannedScreen">
         <div class="banned-icon">
-            <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
+            <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="11"/>
+                <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/>
             </svg>
         </div>
-        <div class="banned-title">BANNED</div>
-        <div class="banned-message">ваш аккаунт был заблокирован</div>
+        <div class="banned-title">Аккаунт заблокирован</div>
+        <div class="banned-message">Доступ к приложению ограничен</div>
         <div class="banned-time" id="banTime">1 день</div>
-        <button class="banned-button" id="closeBannedBtn">CLOSE APP</button>
-        <a class="banned-link" id="rulesLink">Правила пользования</a>
+        <button class="banned-button" id="closeBannedBtn">Закрыть</button>
+        <a class="banned-link" id="rulesLink">Правила использования</a>
     </div>
 
-    <!-- NIGHT SCREEN (твой экран) -->
+    <!-- Night Screen -->
     <div class="night-screen" id="nightScreen">
         <div class="night-stars" id="nightStars"></div>
-        <div class="night-shooting-star" style="top: 20%; left: 80%; animation-delay: 2s;"></div>
-        <div class="night-shooting-star" style="top: 40%; left: 90%; animation-delay: 5s;"></div>
-        <div class="night-shooting-star" style="top: 60%; left: 70%; animation-delay: 8s;"></div>
+        <div class="night-shooting-star" style="top: 15%; left: 75%; animation-delay: 1s;"></div>
+        <div class="night-shooting-star" style="top: 35%; left: 85%; animation-delay: 3.5s;"></div>
+        <div class="night-shooting-star" style="top: 55%; left: 65%; animation-delay: 6s;"></div>
         <div class="night-moon"></div>
         <div class="night-cloud night-cloud1"></div>
         <div class="night-cloud night-cloud2"></div>
         <div class="night-content">
-            <div class="night-closed">CLOSED</div>
-            <div class="night-message" id="nightMessage">Работа приостановлена администратором</div>
-            <button class="night-button" id="closeNightBtn">CLOSE APP</button>
+            <div class="night-closed">Закрыто</div>
+            <div class="night-message" id="nightMessage">Работа приостановлена</div>
+            <button class="night-button" id="closeNightBtn">Закрыть</button>
         </div>
     </div>
 
-    <!-- TOS WARNING SCREEN -->
+    <!-- TOS Screen -->
     <div class="tos-warning" id="tosWarning">
         <div class="tos-icon">
-            <svg viewBox="0 0 24 24">
-                <path d="M12 2L2 7v8c0 5 10 7 10 7s10-2 10-7V7l-10-5z"/>
-                <circle cx="12" cy="12" r="2"/>
-                <path d="M12 7v5"/>
+            <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L3 7v6c0 4.5 9 7.5 9 7.5s9-3 9-7.5V7l-9-5z" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="2.5"/>
+                <path d="M12 8v2.5" stroke-linecap="round"/>
             </svg>
         </div>
-        <div class="tos-title">ToS & Privacy</div>
+        <div class="tos-title">Условия использования</div>
         <div class="tos-message">
-            Для использования приложения необходимо принять<br>
-            <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank" style="color: var(--accent-light);">Политику конфиденциальности</a> и 
-            <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank" style="color: var(--accent-light);">Условия использования</a>.<br><br>
-            Вернитесь в чат с ботом и отправьте /start.
+            Примите условия для продолжения<br><br>
+            <a href="https://telegra.ph/Privacy-Policy-for-AV-Messages-Bot-02-26" target="_blank">Конфиденциальность</a> и 
+            <a href="https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26" target="_blank">Правила</a>
         </div>
-        <button class="tos-button" id="closeAppBtn">CLOSE APP</button>
+        <button class="tos-button" id="closeAppBtn">Закрыть</button>
     </div>
 
-    <!-- MAIN APP -->
+    <!-- Main App -->
     <div class="app" id="app">
         <div class="script-required">
             <span id="userName"></span>
             <span id="unansweredBadge" class="hidden">0</span>
         </div>
 
-        <nav class="tabs">
-            <button class="tab-btn" data-tab="inbox">Входящие</button>
-            <button class="tab-btn active" data-tab="sent">Отправленные</button>
+        <nav class="nav-bar">
+            <div class="nav-tabs">
+                <button class="nav-tab active" data-tab="inbox">Входящие</button>
+                <button class="nav-tab" data-tab="sent">Отправленные</button>
+            </div>
         </nav>
 
         <main class="content">
-            <div class="tab" id="inbox-tab">
+            <div class="tab active" id="inbox-tab">
                 <div class="messages-list" id="inboxMessages">
                     <div class="loading">
                         <div class="loading-spinner"></div>
@@ -1067,11 +901,11 @@
                     </div>
                 </div>
             </div>
-            <div class="tab active" id="sent-tab">
+            <div class="tab" id="sent-tab">
                 <div class="messages-list" id="sentMessages">
                     <div class="loading">
                         <div class="loading-spinner"></div>
-                        Connection...
+                        Загрузка...
                     </div>
                 </div>
             </div>
@@ -1082,15 +916,15 @@
                 <textarea 
                     class="message-input" 
                     id="messageText" 
-                    placeholder="Напишите сообщение..."
+                    placeholder="Сообщение..."
                     rows="3"
                     maxlength="4096"
                 ></textarea>
                 <span class="char-counter" id="charCounter">0/4096</span>
             </div>
             <button class="send-btn" id="sendMessageBtn" disabled>
-                Отправить сообщение
-            </button>  
+                Отправить
+            </button>
         </div>
     </div>
 
@@ -1100,30 +934,29 @@
             let authFinished = false;
             let authResult = null;
             let bannedInfo = null;
-            let banTimerInterval = null;
-            
+
             const tg = window.Telegram.WebApp;
             const splash = document.getElementById('splash');
             const tosWarning = document.getElementById('tosWarning');
             const app = document.getElementById('app');
             const bannedScreen = document.getElementById('bannedScreen');
             const nightScreen = document.getElementById('nightScreen');
-            
+
             tg.expand();
-            tg.setHeaderColor('#232323');
-            tg.setBackgroundColor('#232323');
-            
+            tg.setHeaderColor('#F2F2F7');
+            tg.setBackgroundColor('#F2F2F7');
+
             tosWarning.classList.remove('visible');
             app.classList.remove('visible');
             bannedScreen.classList.remove('visible');
             nightScreen.classList.remove('visible');
-            
+
             function getDaysText(days) {
                 if (days === 1) return '1 день';
                 if (days >= 2 && days <= 4) return days + ' дня';
                 return days + ' дней';
             }
-            
+
             function showBannedScreen(banInfo) {
                 bannedInfo = banInfo;
                 if (banInfo.until) {
@@ -1147,7 +980,7 @@
             }
 
             function showNightScreen(message) {
-                document.getElementById('nightMessage').textContent = message || 'Работа приостановлена администратором';
+                document.getElementById('nightMessage').textContent = message || 'Работа приостановлена';
                 splash.style.display = 'none';
                 tosWarning.classList.remove('visible');
                 app.classList.remove('visible');
@@ -1157,21 +990,15 @@
 
             function createNightStars() {
                 const starsContainer = document.getElementById('nightStars');
-                for (let i = 0; i < 150; i++) {
+                for (let i = 0; i < 120; i++) {
                     const star = document.createElement('div');
                     star.className = 'night-star';
-                    
-                    const size = Math.random() * 3 + 1;
-                    const x = Math.random() * 100;
-                    const y = Math.random() * 100;
-                    const delay = Math.random() * 3;
-                    
+                    const size = Math.random() * 2.5 + 1;
                     star.style.width = size + 'px';
                     star.style.height = size + 'px';
-                    star.style.left = x + '%';
-                    star.style.top = y + '%';
-                    star.style.animationDelay = delay + 's';
-                    
+                    star.style.left = Math.random() * 100 + '%';
+                    star.style.top = Math.random() * 100 + '%';
+                    star.style.animationDelay = Math.random() * 3 + 's';
                     starsContainer.appendChild(star);
                 }
             }
@@ -1179,47 +1006,43 @@
             function startAnimation() {
                 const avContainer = document.querySelector('.av-container');
                 avContainer.addEventListener('animationend', function(e) {
-                    if (e.animationName === 'riseUp') {
+                    if (e.animationName === 'splashFloat') {
                         animationFinished = true;
                         tryShowScreen();
                     }
                 });
             }
-            
+
             async function runAuth() {
                 try {
                     authResult = await authenticate(tg.initData);
                 } catch (error) {
-                    console.error('Auth error:', error);
                     authResult = { ok: false, error: error.message };
                 } finally {
                     authFinished = true;
                     tryShowScreen();
                 }
             }
-            
+
             function tryShowScreen() {
                 if (!animationFinished || !authFinished) return;
 
-                // ПРИОРИТЕТ 1: Бот закрыт (показываем ночной экран)
                 if (authResult && !authResult.ok && authResult.error === 'night_mode') {
                     showNightScreen(authResult.message);
                     return;
                 }
 
-                // ПРИОРИТЕТ 2: Пользователь забанен
                 if (authResult && !authResult.ok && authResult.error === 'banned' && authResult.ban_info) {
                     showBannedScreen(authResult.ban_info);
                     return;
                 }
-                
+
                 splash.style.display = 'none';
-                
-                // ПРИОРИТЕТ 3: Проверка ToS
+
                 if (authResult && authResult.ok && authResult.user && authResult.user.accepted_tos === true) {
                     window.userData = authResult.user;
                     window.tg = tg;
-                    document.getElementById('userName').textContent = authResult.user.first_name || authResult.user.username || 'User';
+                    document.getElementById('userName').textContent = authResult.user.first_name || 'User';
                     if (authResult.user.unanswered > 0) {
                         document.getElementById('unansweredBadge').textContent = authResult.user.unanswered;
                         document.getElementById('unansweredBadge').classList.remove('hidden');
@@ -1231,31 +1054,24 @@
                     ]).then(() => {
                         setupTabs();
                         setupEventListeners();
-                    }).catch(console.error);
+                    });
                 } else {
                     tosWarning.classList.add('visible');
                 }
             }
-            
+
             async function authenticate(initData) {
-                if (!initData) {
-                    return { ok: false, error: 'Нет данных авторизации' };
-                }
+                if (!initData) return { ok: false, error: 'Нет данных авторизации' };
                 try {
                     const response = await fetch('/api/auth', {
                         method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                         body: JSON.stringify({ initData })
                     });
-                    
                     if (response.status === 503) {
                         const errorData = await response.json();
                         return { ok: false, ...errorData };
                     }
-                    
                     if (!response.ok) {
                         const errorData = await response.json().catch(() => ({}));
                         return { ok: false, ...errorData, status: response.status };
@@ -1271,7 +1087,6 @@
                     const response = await fetch('/api/messages/inbox', {
                         headers: { 'X-Telegram-Init-Data': initData }
                     });
-                    
                     if (response.status === 503) {
                         const errorData = await response.json();
                         if (errorData.error === 'night_mode') {
@@ -1279,7 +1094,6 @@
                             return;
                         }
                     }
-                    
                     if (response.status === 403) {
                         const errorData = await response.json();
                         if (errorData.error === 'banned' && errorData.ban_info) {
@@ -1287,17 +1101,13 @@
                             return;
                         }
                     }
-                    
                     if (!response.ok) {
-                        console.error('Inbox response not OK:', response.status);
                         displayInboxMessages([]);
                         return;
                     }
-                    
                     const data = await response.json();
                     displayInboxMessages(data.messages || []);
                 } catch (error) {
-                    console.error('Load inbox error:', error);
                     displayInboxMessages([]);
                 }
             }
@@ -1307,7 +1117,6 @@
                     const response = await fetch('/api/messages/sent', {
                         headers: { 'X-Telegram-Init-Data': initData }
                     });
-                    
                     if (response.status === 503) {
                         const errorData = await response.json();
                         if (errorData.error === 'night_mode') {
@@ -1315,7 +1124,6 @@
                             return;
                         }
                     }
-                    
                     if (response.status === 403) {
                         const errorData = await response.json();
                         if (errorData.error === 'banned' && errorData.ban_info) {
@@ -1323,17 +1131,13 @@
                             return;
                         }
                     }
-                    
                     if (!response.ok) {
-                        console.error('Sent response not OK:', response.status);
                         displaySentMessages([]);
                         return;
                     }
-                    
                     const data = await response.json();
                     displaySentMessages(data.messages || []);
                 } catch (error) {
-                    console.error('Load sent error:', error);
                     displaySentMessages([]);
                 }
             }
@@ -1348,16 +1152,9 @@
                 try {
                     const response = await fetch('/api/send', {
                         method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            initData: window.tg.initData,
-                            text: text
-                        })
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                        body: JSON.stringify({ initData: window.tg.initData, text: text })
                     });
-                    
                     if (response.status === 503) {
                         const errorData = await response.json();
                         if (errorData.error === 'night_mode') {
@@ -1365,20 +1162,13 @@
                             return;
                         }
                     }
-                    
                     const result = await response.json();
                     if (!response.ok) {
                         if (result.error === 'banned' && result.ban_info) {
                             showBannedScreen(result.ban_info);
                             return;
                         }
-                        if (result.error === 'rate_limit') {
-                            alert(result.message || 'Превышен лимит отправки сообщений');
-                        } else if (result.error === 'tos_not_accepted') {
-                            alert('Необходимо принять условия использования. Вернитесь в бот и нажмите /start');
-                        } else {
-                            alert('Ошибка: ' + (result.message || result.error || 'Неизвестная ошибка'));
-                        }
+                        alert(result.message || 'Ошибка');
                         return;
                     }
                     if (result.ok) {
@@ -1390,33 +1180,31 @@
                         ]);
                         if (window.tg.showPopup) {
                             window.tg.showPopup({
-                                title: 'Успешно',
-                                message: `Сообщение #${result.message_id} отправлено!`,
+                                title: 'Отправлено',
+                                message: `Сообщение #${result.message_id}`,
                                 buttons: [{ type: 'ok' }]
                             });
                         }
                     }
                 } catch (error) {
-                    console.error('Send error:', error);
-                    alert('Ошибка отправки: ' + error.message);
+                    alert('Ошибка отправки');
                 } finally {
                     const hasText = textarea.value.trim().length > 0;
                     sendBtn.disabled = !hasText;
                     if (hasText) sendBtn.classList.add('active');
                 }
             }
-            
+
             function displayInboxMessages(messages) {
                 const container = document.getElementById('inboxMessages');
                 if (!container) return;
                 if (!messages || messages.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-icon">:(</div>
+                            <div class="empty-icon">✉️</div>
                             <h3>Нет ответов</h3>
-                            <p>Когда админ ответит, они появятся здесь</p>
-                        </div>
-                    `;
+                            <p>Здесь появятся ответы администратора</p>
+                        </div>`;
                     return;
                 }
                 let html = '';
@@ -1431,28 +1219,19 @@
                     html += `
                         <div class="message-card">
                             <div class="message-header">
-                                <span class="message-id">Ответ на #${msg.message_id}</span>
+                                <span class="message-id">#${msg.message_id}</span>
                                 <span class="message-time">${timeStr}</span>
                             </div>
-                            <div class="answer-badge" style="margin-top: 0;">
-                                <div class="answer-header">Администратор:</div>
-                                <div class="answer-text">
-                                    ${escapeHtml(msg.answer_text || 'Ответ получен')}
-                                </div>
-                                <div class="answer-meta">
-                                    ${msg.answered_by_name || 'Администратор'}
-                                </div>
+                            <div class="answer-badge">
+                                <div class="answer-header">Ответ</div>
+                                <div class="answer-text">${escapeHtml(msg.answer_text || '')}</div>
+                                <div class="answer-meta">${msg.answered_by_name || 'Администратор'}</div>
                             </div>
-                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
-                                <div style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 4px;">
-                                    Ваше сообщение:
-                                </div>
-                                <div style="font-size: 14px; color: var(--text-secondary);">
-                                    ${escapeHtml(msg.original_text || '')}
-                                </div>
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--separator);">
+                                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Ваше сообщение</div>
+                                <div style="font-size: 15px; color: var(--text-primary);">${escapeHtml(msg.original_text || '')}</div>
                             </div>
-                        </div>
-                    `;
+                        </div>`;
                 });
                 container.innerHTML = html;
             }
@@ -1463,11 +1242,10 @@
                 if (!messages || messages.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-icon">:(</div>
+                            <div class="empty-icon">💬</div>
                             <h3>Нет сообщений</h3>
                             <p>Напишите первое сообщение</p>
-                        </div>
-                    `;
+                        </div>`;
                     return;
                 }
                 let html = '';
@@ -1480,35 +1258,27 @@
                         month: '2-digit'
                     });
                     const statusClass = msg.is_answered ? 'status-answered' : 'status-waiting';
-                    const statusText = msg.is_answered ? 'Отвечено' : 'Ожидает ответа';
+                    const statusText = msg.is_answered ? '✓ Отвечено' : '• Ожидает';
                     html += `
                         <div class="message-card">
                             <div class="message-header">
                                 <span class="message-id">#${msg.message_id}</span>
                                 <span class="message-time">${timeStr}</span>
                             </div>
-                            <div class="message-status ${statusClass}">
-                                ${statusText}
-                            </div>
-                            <div class="message-text">
-                                ${escapeHtml(msg.text || '')}
-                            </div>
+                            <div class="message-status ${statusClass}">${statusText}</div>
+                            <div class="message-text">${escapeHtml(msg.text || '')}</div>
                             ${msg.is_answered ? `
                                 <div class="answer-badge">
-                                    <div class="answer-header">Ответ:</div>
-                                    <div class="answer-text">
-                                        ${escapeHtml(msg.answer_text || 'Ответ получен')}
-                                    </div>
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
+                                    <div class="answer-header">Ответ</div>
+                                    <div class="answer-text">${escapeHtml(msg.answer_text || '')}</div>
+                                </div>` : ''}
+                        </div>`;
                 });
                 container.innerHTML = html;
             }
-            
+
             function setupTabs() {
-                const tabButtons = document.querySelectorAll('.tab-btn');
+                const tabButtons = document.querySelectorAll('.nav-tab');
                 const tabs = document.querySelectorAll('.tab');
                 tabButtons.forEach(btn => {
                     btn.addEventListener('click', function() {
@@ -1530,16 +1300,11 @@
                         document.getElementById('charCounter').textContent = length + '/4096';
                         const hasText = textarea.value.trim().length > 0;
                         sendBtn.disabled = !hasText;
-                        if (hasText) {
-                            sendBtn.classList.add('active');
-                        } else {
-                            sendBtn.classList.remove('active');
-                        }
+                        if (hasText) sendBtn.classList.add('active');
+                        else sendBtn.classList.remove('active');
                     });
                 }
-                if (sendBtn) {
-                    sendBtn.addEventListener('click', sendMessage);
-                }
+                if (sendBtn) sendBtn.addEventListener('click', sendMessage);
             }
 
             function escapeHtml(unsafe) {
@@ -1552,30 +1317,15 @@
                     .replace(/'/g, "&#039;");
             }
 
-            document.getElementById('closeBannedBtn').addEventListener('click', () => {
-                if (tg) tg.close();
-                else window.close();
-            });
-
-            document.getElementById('closeNightBtn').addEventListener('click', () => {
-                if (tg) tg.close();
-                else window.close();
-            });
-
-            document.getElementById('closeAppBtn').addEventListener('click', () => {
-                if (tg) tg.close();
-                else window.close();
-            });
-
+            document.getElementById('closeBannedBtn').addEventListener('click', () => tg?.close() || window.close());
+            document.getElementById('closeNightBtn').addEventListener('click', () => tg?.close() || window.close());
+            document.getElementById('closeAppBtn').addEventListener('click', () => tg?.close() || window.close());
             document.getElementById('rulesLink').addEventListener('click', (e) => {
                 e.preventDefault();
-                if (tg && tg.openLink) {
-                    tg.openLink('https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26');
-                } else {
-                    window.open('https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26', '_blank');
-                }
+                if (tg?.openLink) tg.openLink('https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26');
+                else window.open('https://telegra.ph/Terms-of-Service-for-message-to-av-Bot-02-26', '_blank');
             });
-            
+
             createNightStars();
             startAnimation();
             runAuth();
