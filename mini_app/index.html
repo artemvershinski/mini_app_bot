@@ -67,7 +67,7 @@
             -webkit-user-select: none;
         }
 
-        /* Splash Screen */
+        /* Splash Screen - ОРИГИНАЛЬНАЯ АНИМАЦИЯ */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -80,58 +80,205 @@
             align-items: center;
             z-index: 1000;
             pointer-events: none;
+            overflow: hidden;
         }
 
-        .av-container {
-            display: flex;
-            gap: 4px;
-            align-items: center;
-            animation: splashFloat 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
-            animation-delay: 0.5s;
+        .splash-screen::before {
+            content: '';
+            position: absolute;
+            top: -40%;
+            left: -30%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 30%, 
+                        rgba(0, 122, 255, 0.4) 3%,  
+                        rgba(88, 86, 214, 0.35) 25%, 
+                        rgba(0, 122, 255, 0.2) 50%,
+                        transparent 80%);
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            animation: flashlight 5s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+            animation-delay: 1.5s;
         }
 
-        @keyframes splashFloat {
-            0% { 
+        @keyframes flashlight {
+            0% {
                 opacity: 0;
-                transform: scale(0.8) translateY(20px);
-            }
-            40% {
+                transform: scale(0.3);
+                filter: blur(0px);
+            } 
+            15% {
                 opacity: 1;
-                transform: scale(1.02) translateY(-4px);
+                transform: scale(1.2);
+                filter: blur(2px);
             }
-            70% {
-                transform: scale(0.98) translateY(2px);
+            35% {
+                opacity: 0.95;
+                transform: scale(1.8);
+                filter: blur(5px);
+            }  
+            55% { 
+                opacity: 0.8;
+                transform: scale(2.4); 
+                filter: blur(10px);
             }
-            85% {
-                opacity: 1;
-                transform: scale(1) translateY(0);
+            75% {
+                opacity: 0.5;
+                transform: scale(3);
+                filter: blur(15px);
             }
-            100% {
+            100% { 
                 opacity: 0;
-                transform: scale(1.5) translateY(-10px);
+                transform: scale(4);
+                filter: blur(25px);
             }
         }
 
-        .av-letter {
-            font-family: var(--font-stack);
-            font-weight: 700;
-            font-size: clamp(80px, 20vw, 160px);
+        .av-container { 
+            animation: containerScale 1.2s cubic-bezier(0.4, 0, 0.2, 1) 1.5s forwards,
+                promise 1.6s 2.7s forwards,
+                riseUp 1.5s cubic-bezier(0.4, 0, 0.2, 1) 4s forwards;  
+        }
+
+        .av-letter { 
+            opacity: 0;
+            position: relative;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+            font-weight: 800; 
+            font-size: clamp(100px, 25vw, 200px);
             background: linear-gradient(135deg, #007AFF, #5856D6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            letter-spacing: -2px;
-            filter: drop-shadow(0 2px 8px rgba(0, 122, 255, 0.2));
+            display: inline-block;
+            filter: drop-shadow(0 0 15px rgba(0, 122, 255, 0.5));
+            will-change: transform, filter, opacity;
+            letter-spacing: -4px;
         }
 
-        /* Banned Screen */
+        @keyframes promise {
+            0% {
+                transform: scale(1.1) rotate(0deg);
+            }
+            80% {  
+                transform: scale(1.2) rotate(2deg);
+            } 
+        }
+
+        .letter-a {
+            animation: letterA 0.8s ease-out 1.5s forwards;
+            left: -20px;
+            top: -40px; 
+        }
+
+        .letter-v {
+            animation: letterV 0.8s ease-out 1.7s forwards;
+            left: 20px;
+            top: 40px;
+        }
+
+        .letter-a::after,
+        .letter-v::after {
+            content: attr(data-letter);
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: linear-gradient(135deg, #007AFF, #5856D6);  
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0.3;
+            filter: blur(4px);
+            transform: translateY(0);
+            z-index: -1;
+            animation: trail 1s ease-in-out 1.5s infinite alternate;
+            pointer-events: none;
+        }
+
+        .letter-a::after {
+            content: 'A';
+            animation-delay: 1.55s;
+        }
+
+        .letter-v::after {
+            content: 'V';
+            animation-delay: 1.6s; 
+        }
+
+        @keyframes trail { 
+            0% { 
+                transform: translateY(5px) scale(0.95); 
+                opacity: 0.2; 
+                filter: blur(8px); 
+            }
+            100% { 
+                transform: translateY(-5px) scale(1.05); 
+                opacity: 0.4; 
+                filter: blur(4px); 
+            }
+        } 
+
+        @keyframes containerScale {
+            0% { 
+                opacity: 1; 
+                transform: scale(2) translateY(100px); 
+            }
+            70% { 
+                transform: scale(.9) translateY(10px); 
+            } 
+            100% { 
+                transform: scale(1.1) translateY(0); 
+            } 
+        }
+
+        @keyframes letterA {
+            0% { 
+                opacity: 0; 
+                left: -60px; 
+                top: -40px; 
+            }
+            100% { 
+                opacity: 1; 
+                left: 0; 
+                top: 0;
+            }
+        }
+
+        @keyframes letterV {
+            0% { 
+                opacity: 0; 
+                left: 100px; 
+                top: 40px; 
+            }
+            100% { 
+                opacity: 1; 
+                left: 0; 
+                top: 0; 
+            }
+        }
+
+        @keyframes riseUp {
+            0% { 
+                transform: scale(1.2) rotate(2deg) translateY(0); 
+                opacity: 1; 
+                filter: blur(0); 
+            }
+            100% { 
+                transform: scale(15) translateY(-200vh); 
+                opacity: 0; 
+                filter: blur(10px); 
+            }
+        }
+
+        /* Banned Screen - ПОЛНОСТЬЮ НОВЫЙ ДИЗАЙН */
         .banned-screen {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: var(--bg-primary);
+            background: #000;
             display: none;
             flex-direction: column;
             justify-content: center;
@@ -139,6 +286,7 @@
             padding: 32px;
             z-index: 2000;
             text-align: center;
+            overflow: hidden;
         }
 
         .banned-screen.visible {
@@ -146,97 +294,138 @@
             animation: fadeIn 0.4s ease-out;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+        .banned-screen::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            animation: bannedPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes bannedPulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+            50% { transform: translate(-50%, -50%) scale(1.5); opacity: 1; }
         }
 
         .banned-icon {
-            width: 80px;
-            height: 80px;
-            background: rgba(255, 59, 48, 0.1);
+            width: 100px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid var(--accent);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 32px;
+            margin-bottom: 40px;
+            position: relative;
+            z-index: 1;
         }
 
         .banned-icon svg {
-            width: 36px;
-            height: 36px;
+            width: 48px;
+            height: 48px;
             fill: none;
-            stroke: #FF3B30;
+            stroke: var(--accent);
             stroke-width: 2;
+            filter: drop-shadow(0 0 10px var(--accent));
         }
 
         .banned-title {
-            font-size: 28px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: var(--text-primary);
-            letter-spacing: -0.5px;
+            font-size: 42px;
+            font-weight: 900;
+            color: #ffffff;
+            margin-bottom: 16px;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes glitchText {
+            0%, 100% { transform: translate(0); }
+            20% { transform: translate(-3px, 3px); }
+            40% { transform: translate(3px, -3px); }
+            60% { transform: translate(-3px, -3px); }
+            80% { transform: translate(3px, 3px); }
         }
 
         .banned-message {
-            font-size: 17px;
-            color: var(--text-secondary);
-            margin-bottom: 40px;
-            max-width: 280px;
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 32px;
+            font-weight: 400;
+            position: relative;
+            z-index: 1;
+            letter-spacing: 1px;
         }
 
         .banned-time {
-            font-size: 15px;
-            font-weight: 500;
-            color: #FF3B30;
-            margin-bottom: 40px;
-            padding: 12px 24px;
-            background: rgba(255, 59, 48, 0.08);
-            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 48px;
+            padding: 16px 32px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 40px;
+            position: relative;
+            z-index: 1;
+            letter-spacing: 2px;
+            backdrop-filter: blur(10px);
         }
 
         .banned-button {
             background: var(--accent);
             border: none;
-            border-radius: 20px;
-            padding: 14px 40px;
-            color: white;
+            border-radius: 30px;
+            padding: 16px 48px;
+            color: rgb(0, 0, 0);
             font-size: 17px;
             font-weight: 600;
             cursor: pointer;
-            transition: var(--transition-fast);
+            transition: all 0.2s ease;
             width: 100%;
             max-width: 280px;
             font-family: var(--font-stack);
-            box-shadow: var(--shadow-md);
+            position: relative;
+            z-index: 1;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 20px rgba(255, 255, 255, 0.3);
         }
 
         .banned-button:active {
-            transform: scale(0.96);
-            opacity: 0.8;
+            transform: scale(0.95);
+            background: #ffffff;
         }
 
         .banned-link {
-            color: var(--accent);
+            color: rgba(255, 255, 255, 0.5);
             text-decoration: none;
-            font-size: 15px;
+            font-size: 14px;
             margin-top: 24px;
             font-weight: 500;
             cursor: pointer;
+            position: relative;
+            z-index: 1;
+            letter-spacing: 0.5px;
         }
 
         .banned-link:active {
-            opacity: 0.6;
+            color: rgba(255, 255, 255, 0.8);
         }
 
-        /* Night Screen */
+        /* Night Screen - КАК БЫЛО ИЗНАЧАЛЬНО */
         .night-screen {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f1421 100%);
+            background: linear-gradient(135deg, #0b0f2a 0%, #1a1f3a 50%, #0f142e 100%);
             display: none;
             flex-direction: column;
             justify-content: center;
@@ -256,98 +445,96 @@
             left: 0;
             width: 100%;
             height: 100%;
+            z-index: 0;
         }
 
         .night-star {
             position: absolute;
             background: white;
             border-radius: 50%;
-            animation: twinkle 2.5s infinite ease-in-out;
+            animation: twinkle 3s infinite ease-in-out;
         }
 
         @keyframes twinkle {
-            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            0%, 100% { opacity: 0.2; transform: scale(1); }
             50% { opacity: 1; transform: scale(1.2); }
         }
 
         .night-shooting-star {
             position: absolute;
-            width: 80px;
-            height: 1.5px;
-            background: linear-gradient(90deg, rgba(255,255,255,0.6), transparent);
-            transform: rotate(-35deg);
-            animation: shoot 3.5s infinite linear;
+            width: 100px;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.8), transparent);
+            transform: rotate(-45deg);
+            animation: shoot 4s infinite linear;
             opacity: 0;
         }
 
         @keyframes shoot {
-            0% { transform: translateX(0) translateY(0) rotate(-35deg); opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { transform: translateX(-400px) translateY(400px) rotate(-35deg); opacity: 0; }
+            0% {
+                transform: translateX(0) translateY(0) rotate(-45deg);
+                opacity: 1;
+            }
+            70% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateX(-500px) translateY(500px) rotate(-45deg);
+                opacity: 0;
+            }
         }
 
         .night-moon {
             position: absolute;
-            top: 60px;
-            right: 40px;
-            width: 70px;
-            height: 70px;
-            background: #f5f5f5;
+            top: 50px;
+            right: 50px;
+            width: 60px;
+            height: 60px;
+            background: #f0f0f0;
             border-radius: 50%;
-            box-shadow: 0 0 60px rgba(255, 255, 255, 0.25), 0 0 120px rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.3);
+            z-index: 1;
         }
 
         .night-moon::before {
             content: '';
             position: absolute;
-            top: 8px;
-            left: 12px;
-            width: 16px;
-            height: 16px;
-            background: #e8e8e8;
+            top: 5px;
+            left: 10px;
+            width: 20px;
+            height: 20px;
+            background: #ddd;
             border-radius: 50%;
             opacity: 0.5;
         }
 
-        .night-moon::after {
-            content: '';
-            position: absolute;
-            top: 30px;
-            left: 18px;
-            width: 8px;
-            height: 8px;
-            background: #e0e0e0;
-            border-radius: 50%;
-            opacity: 0.3;
-        }
-
         .night-cloud {
             position: absolute;
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(255, 255, 255, 0.03);
             border-radius: 100px;
-            filter: blur(30px);
+            filter: blur(20px);
+            z-index: 0;
         }
 
         .night-cloud1 {
-            width: 200px;
-            height: 60px;
-            bottom: 120px;
-            left: -30px;
-            animation: drift 25s infinite linear;
+            width: 300px;
+            height: 80px;
+            bottom: 100px;
+            left: -50px;
+            animation: drift 20s infinite linear;
         }
 
         .night-cloud2 {
-            width: 280px;
-            height: 80px;
-            top: 200px;
-            right: -60px;
-            animation: drift 30s infinite linear reverse;
+            width: 400px;
+            height: 100px;
+            top: 150px;
+            right: -100px;
+            animation: drift 25s infinite linear reverse;
         }
 
         @keyframes drift {
             0% { transform: translateX(0); }
-            100% { transform: translateX(150px); }
+            100% { transform: translateX(200px); }
         }
 
         .night-content {
@@ -357,52 +544,65 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
-            max-width: 400px;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: var(--radius-lg);
-            padding: 40px 32px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 500px;
+            min-height: 100vh;
+            justify-content: center;
         }
 
         .night-closed {
-            font-size: 24px;
-            font-weight: 600;
-            letter-spacing: 2px;
-            margin-bottom: 16px;
-            color: rgba(255, 255, 255, 0.9);
-            text-transform: uppercase;
+            font-size: 48px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            margin-bottom: 30px;
+            color: #d9d9d9;
+            text-align: center;
+            width: 100%;
         }
 
         .night-message {
-            font-size: 15px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 36px;
+            font-size: 18px;
+            color: rgba(189, 189, 189, 0.9);
+            margin-bottom: 50px;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            backdrop-filter: blur(5px);
+            padding: 15px 30px;
+            border-radius: 40px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             text-align: center;
+            width: fit-content;
+            min-width: 200px;
+            max-width: 90%;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            margin-left: auto;
+            margin-right: auto;
             line-height: 1.5;
         }
 
         .night-button {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            padding: 14px 36px;
-            color: white;
-            font-size: 17px;
+            border-radius: 50px;
+            padding: 16px 40px;
+            color: rgb(221, 221, 221);
+            font-size: 16px;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s ease;
-            font-family: var(--font-stack);
-            width: 100%;
-            max-width: 240px;
+            transition: all 0.3s ease;
+            width: fit-content;
+            margin: 0 auto;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         }
 
-        .night-button:active {
-            background: rgba(255, 255, 255, 0.25);
-            transform: scale(0.96);
+        .night-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
         }
 
         /* TOS Screen */
@@ -425,6 +625,11 @@
         .tos-warning.visible {
             display: flex;
             animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .tos-icon {
@@ -579,7 +784,7 @@
             gap: 12px;
         }
 
-        /* Message Card - Apple iMessage style */
+        /* Message Card */
         .message-card {
             background: var(--bg-secondary);
             border-radius: var(--radius-md);
@@ -824,12 +1029,12 @@
     <!-- Splash Screen -->
     <div class="splash-screen" id="splash">
         <div class="av-container">
-            <span class="av-letter">A</span>
-            <span class="av-letter">V</span>
+            <span class="av-letter letter-a" data-letter="A">A</span>
+            <span class="av-letter letter-v" data-letter="V">V</span>
         </div>
     </div>
 
-    <!-- Banned Screen -->
+    <!-- Banned Screen - НОВЫЙ ДИЗАЙН -->
     <div class="banned-screen" id="bannedScreen">
         <div class="banned-icon">
             <svg viewBox="0 0 24 24" fill="none">
@@ -837,26 +1042,26 @@
                 <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/>
             </svg>
         </div>
-        <div class="banned-title">Аккаунт заблокирован</div>
-        <div class="banned-message">Доступ к приложению ограничен</div>
+        <div class="banned-title">BANNED</div>
+        <div class="banned-message">ваш аккаунт был заблокирован</div>
         <div class="banned-time" id="banTime">1 день</div>
-        <button class="banned-button" id="closeBannedBtn">Закрыть</button>
-        <a class="banned-link" id="rulesLink">Правила использования</a>
+        <button class="banned-button" id="closeBannedBtn">CLOSE APP</button>
+        <a class="banned-link" id="rulesLink">Правила пользования</a>
     </div>
 
-    <!-- Night Screen -->
+    <!-- Night Screen - КАК БЫЛО -->
     <div class="night-screen" id="nightScreen">
         <div class="night-stars" id="nightStars"></div>
-        <div class="night-shooting-star" style="top: 15%; left: 75%; animation-delay: 1s;"></div>
-        <div class="night-shooting-star" style="top: 35%; left: 85%; animation-delay: 3.5s;"></div>
-        <div class="night-shooting-star" style="top: 55%; left: 65%; animation-delay: 6s;"></div>
+        <div class="night-shooting-star" style="top: 20%; left: 80%; animation-delay: 2s;"></div>
+        <div class="night-shooting-star" style="top: 40%; left: 90%; animation-delay: 5s;"></div>
+        <div class="night-shooting-star" style="top: 60%; left: 70%; animation-delay: 8s;"></div>
         <div class="night-moon"></div>
         <div class="night-cloud night-cloud1"></div>
         <div class="night-cloud night-cloud2"></div>
         <div class="night-content">
-            <div class="night-closed">Закрыто</div>
-            <div class="night-message" id="nightMessage">Работа приостановлена</div>
-            <button class="night-button" id="closeNightBtn">Закрыть</button>
+            <div class="night-closed">CLOSED</div>
+            <div class="night-message" id="nightMessage">Работа приостановлена администратором</div>
+            <button class="night-button" id="closeNightBtn">CLOSE APP</button>
         </div>
     </div>
 
@@ -980,7 +1185,7 @@
             }
 
             function showNightScreen(message) {
-                document.getElementById('nightMessage').textContent = message || 'Работа приостановлена';
+                document.getElementById('nightMessage').textContent = message || 'Работа приостановлена администратором';
                 splash.style.display = 'none';
                 tosWarning.classList.remove('visible');
                 app.classList.remove('visible');
@@ -990,10 +1195,10 @@
 
             function createNightStars() {
                 const starsContainer = document.getElementById('nightStars');
-                for (let i = 0; i < 120; i++) {
+                for (let i = 0; i < 150; i++) {
                     const star = document.createElement('div');
                     star.className = 'night-star';
-                    const size = Math.random() * 2.5 + 1;
+                    const size = Math.random() * 3 + 1;
                     star.style.width = size + 'px';
                     star.style.height = size + 'px';
                     star.style.left = Math.random() * 100 + '%';
@@ -1006,7 +1211,7 @@
             function startAnimation() {
                 const avContainer = document.querySelector('.av-container');
                 avContainer.addEventListener('animationend', function(e) {
-                    if (e.animationName === 'splashFloat') {
+                    if (e.animationName === 'riseUp') {
                         animationFinished = true;
                         tryShowScreen();
                     }
@@ -1219,19 +1424,28 @@
                     html += `
                         <div class="message-card">
                             <div class="message-header">
-                                <span class="message-id">#${msg.message_id}</span>
+                                <span class="message-id">Ответ на #${msg.message_id}</span>
                                 <span class="message-time">${timeStr}</span>
                             </div>
-                            <div class="answer-badge">
-                                <div class="answer-header">Ответ</div>
-                                <div class="answer-text">${escapeHtml(msg.answer_text || '')}</div>
-                                <div class="answer-meta">${msg.answered_by_name || 'Администратор'}</div>
+                            <div class="answer-badge" style="margin-top: 0;">
+                                <div class="answer-header">Администратор:</div>
+                                <div class="answer-text">
+                                    ${escapeHtml(msg.answer_text || 'Ответ получен')}
+                                </div>
+                                <div class="answer-meta">
+                                    ${msg.answered_by_name || 'Администратор'}
+                                </div>
                             </div>
-                            <div style="margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--separator);">
-                                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Ваше сообщение</div>
-                                <div style="font-size: 15px; color: var(--text-primary);">${escapeHtml(msg.original_text || '')}</div>
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">
+                                    Ваше сообщение:
+                                </div>
+                                <div style="font-size: 14px; color: var(--text-secondary);">
+                                    ${escapeHtml(msg.original_text || '')}
+                                </div>
                             </div>
-                        </div>`;
+                        </div>
+                    `;
                 });
                 container.innerHTML = html;
             }
@@ -1258,21 +1472,21 @@
                         month: '2-digit'
                     });
                     const statusClass = msg.is_answered ? 'status-answered' : 'status-waiting';
-                    const statusText = msg.is_answered ? '✓ Отвечено' : '• Ожидает';
+                    const statusText = msg.is_answered ? '✓ Отвечено' : '• Ожидает ответа';
                     html += `
                         <div class="message-card">
                             <div class="message-header">
                                 <span class="message-id">#${msg.message_id}</span>
                                 <span class="message-time">${timeStr}</span>
                             </div>
-                            <div class="message-status ${statusClass}">${statusText}</div>
-                            <div class="message-text">${escapeHtml(msg.text || '')}</div>
-                            ${msg.is_answered ? `
-                                <div class="answer-badge">
-                                    <div class="answer-header">Ответ</div>
-                                    <div class="answer-text">${escapeHtml(msg.answer_text || '')}</div>
-                                </div>` : ''}
-                        </div>`;
+                            <div class="message-status ${statusClass}">
+                                ${statusText}
+                            </div>
+                            <div class="message-text">
+                                ${escapeHtml(msg.text || '')}
+                            </div>
+                        </div>
+                    `;
                 });
                 container.innerHTML = html;
             }
